@@ -27,6 +27,8 @@ horovodrun -n 3 python3 test.py --check-build
 # RUN
 horovodrun -n 2 python3 run.py
 
-folder structure:
+# Folder Structure:
+By default: training data in train folder, evalution data in dev folder and test data in test folder.
+By default: trained model will be saved to model folder, prediction result in tsv format ready for submission to leaderborad system will be saved to model folder.
 
-![image](https://user-images.githubusercontent.com/28990806/139605841-f20dfc64-1520-4891-a600-474253cc53de.png)
+![image](https://user-images.githubusercontent.com/28990806/139605879-06eb35b8-5749-4cbf-9977-0ab10d977a54.png)
