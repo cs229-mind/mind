@@ -25,10 +25,18 @@ HOROVOD_WITH_PYTORCH=1 HOROVOD_WITH_TENSORFLOW=1 pip3 install --no-cache-dir hor
 horovodrun -n 3 python3 test.py --check-build
 
 # RUN
-horovodrun -n 2 python3 run.py
+for training: horovodrun -n 2 python3 run.py --mode train
+
+for evaluation: horovodrun -n 2 python3 run.py --mode test --test_dir 'dev'
+
+for prediction: horovodrun -n 2 python3 run.py --mode test --test_dir 'test'
+
+# Submit
+upload the prediction_<20211031233724>.tsv in model folder as described in the folder structure to leaderboard(https://competitions.codalab.org/competitions/24122#participate)
 
 # Folder Structure:
 By default: training data in train folder, evalution data in dev folder and test data in test folder.
+  - training and evaluation supports multiple gpus, to speed up, the behavior data can be splitted to multiple files for interleave.
 By default: trained model will be saved to model folder, prediction result in tsv format ready for submission to leaderborad system will be saved to model folder.
 
 ![image](https://user-images.githubusercontent.com/28990806/139605879-06eb35b8-5749-4cbf-9977-0ab10d977a54.png)
