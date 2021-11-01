@@ -4,8 +4,11 @@
 Version: 3.6.8
 
 # DATA
-/mind/MIND/test
-/mind/MIND/train
+~/mind/MIND/train
+
+~/mind/MIND/dev
+
+~/mind/MIND/test
 
 # TF
 Name: tensorflow
