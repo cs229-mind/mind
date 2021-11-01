@@ -15,8 +15,14 @@ Name: tensorflow
 Version: 2.3.4
 
 # Package
-transformers
+- transformers
 Version: 4.11.3
+
+- spacy
+Version: 3.1.4
+
+- joblib
+Version: 1.1.0
 
 # CUDA 10.1 (cuDNN 7.6)
 pip install torch==1.7.1+cu101 torchvision==0.8.2+cu101 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
@@ -28,11 +34,11 @@ HOROVOD_WITH_PYTORCH=1 HOROVOD_WITH_TENSORFLOW=1 pip3 install --no-cache-dir hor
 horovodrun -n 3 python3 test.py --check-build
 
 # RUN
-for training: horovodrun -n 2 python3 run.py --mode train
+- for training: horovodrun -n 2 python3 run.py --mode train
 
-for evaluation: horovodrun -n 2 python3 run.py --mode test --test_dir 'dev'
+- for evaluation: horovodrun -n 2 python3 run.py --mode test --test_dir 'dev'
 
-for prediction: horovodrun -n 2 python3 run.py --mode test --test_dir 'test'
+- for prediction: horovodrun -n 2 python3 run.py --mode test --test_dir 'test'
 
 # Submit
 upload the prediction_<20211031233724>.tsv in model folder as described in the folder structure to leaderboard(https://competitions.codalab.org/competitions/24122#participate)

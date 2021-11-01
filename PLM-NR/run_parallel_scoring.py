@@ -332,17 +332,21 @@ def test(args):
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
-        his_lens = torch.sum(log_mask, dim=-1).to(torch.device("cpu")).detach().numpy()
-
-        if args.enable_gpu:
-            log_vecs = log_vecs.cuda(non_blocking=True)
-            log_mask = log_mask.cuda(non_blocking=True)
+    def score_func(docs, model):
+        log_vecs, log_mask, impression_ids, news_vecs, news_bias, labels = [], [], [], [], [], [], []
+        for (impression_id, log_vec, mask, news_vec, bias, label) in docs:
+            impression_ids.append(impression_id)                
+            log_vecs.append(log_vec)
+            log_mask.append(mask)
+            news_vecs.append(news_vec)
+            news_bias.append(bias)
+            labels.append(label)
 
         user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 
-        for index, impression_id, user_vec, news_vec, bias, label, his_len in zip(
-                range(len(labels)), impression_ids, user_vecs, news_vecs, news_bias, labels, his_lens):
+        scores = []
+        for impression_id, user_vec, news_vec, bias, label, his_len in zip(
+                impression_ids, user_vecs, news_vecs, news_bias, labels):
 
             if label.mean() == 0 or label.mean() == 1:
                 continue
@@ -353,7 +357,7 @@ def test(args):
 
             # label is -1 is for test set and prediction only
             if(np.all(label == -1)):
-                SCORE.append([impression_id, score])
+                scores.append([impression_id, score])
                 continue
 
             auc = roc_auc_score(label, score)
@@ -365,6 +369,22 @@ def test(args):
             MRR.append(mrr)
             nDCG5.append(ndcg5)
             nDCG10.append(ndcg10)
+
+        return scores
+
+    for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
+
+        if args.enable_gpu:
+            log_vecs = log_vecs.cuda(non_blocking=True)
+            log_mask = log_mask.cuda(non_blocking=True)
+
+        docs = [(impression_id, log_vec, mask, news_vec, bias, label) \
+                for impression_id, log_vec, mask, news_vec, bias, label in zip(
+                    impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels)]
+        # enable parallel scoring
+        SCORE.extend(utils.parallel(score_func, docs,
+                                    args.batch_size/8, 8, 'threads', False,  # batch_size, n_jobs, synchronize
+                                    model))
 
         if cnt % args.log_steps == 0:
             print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
