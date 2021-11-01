@@ -24,7 +24,7 @@ class DataLoaderTrain(IterableDataset):
                  data_dir,
                  filename_pat,
                  args,
-                 world_size,
+                 worker_size,
                  worker_rank,
                  cuda_device_idx,
                  news_index,
@@ -41,7 +41,7 @@ class DataLoaderTrain(IterableDataset):
         self.batch_size = args.batch_size
 
         self.worker_rank = worker_rank
-        self.world_size = world_size
+        self.worker_size = worker_size
         self.cuda_device_idx = cuda_device_idx
         # data loader only cares about the config after tokenization.
         self.sampler = None
@@ -64,7 +64,7 @@ class DataLoaderTrain(IterableDataset):
             filename_pat=self.filename_pat,
             batch_size=self.batch_size,
             worker_rank=self.worker_rank,
-            world_size=self.world_size,
+            worker_size=self.worker_size,
             enable_shuffle=self.enable_shuffle,
             shuffle_buffer_size=self.shuffle_buffer_size,
             shuffle_seed=self.epoch,  # epoch id as shuffle random seed
@@ -94,7 +94,7 @@ class DataLoaderTrain(IterableDataset):
                 filename_pat=self.filename_pat,
                 batch_size=self.batch_size,
                 worker_rank=self.worker_rank,
-                world_size=self.world_size,
+                worker_size=self.worker_size,
                 enable_shuffle=self.enable_shuffle,
                 shuffle_seed=self.epoch,  # epoch id as shuffle random seed
             )
@@ -142,7 +142,6 @@ class DataLoaderTrain(IterableDataset):
 
         for poss, line in zip(batch_poss, batch):
             click_docs = line[3].split()
-            
 
             click_docs, log_mask = self.pad_to_fix_len(self.trans_to_nindex(click_docs),
                                              self.user_log_length)
@@ -221,7 +220,7 @@ class DataLoaderTest(DataLoaderTrain):
                  data_dir,
                  filename_pat,
                  args,
-                 world_size,
+                 worker_size,
                  worker_rank,
                  cuda_device_idx,
                  news_index,
@@ -239,7 +238,7 @@ class DataLoaderTest(DataLoaderTrain):
         self.batch_size = args.batch_size
 
         self.worker_rank = worker_rank
-        self.world_size = world_size
+        self.worker_size = worker_size
         self.cuda_device_idx = cuda_device_idx
         # data loader only cares about the config after tokenization.
         self.sampler = None
@@ -261,7 +260,7 @@ class DataLoaderTest(DataLoaderTrain):
             filename_pat=self.filename_pat,
             batch_size=self.batch_size,
             worker_rank=self.worker_rank,
-            world_size=self.world_size,
+            worker_size=self.worker_size,
             enable_shuffle=self.enable_shuffle,
             shuffle_seed=self.epoch,  # epoch id as shuffle random seed
         )
@@ -278,7 +277,7 @@ class DataLoaderTest(DataLoaderTrain):
                 filename_pat=self.filename_pat,
                 batch_size=self.batch_size,
                 worker_rank=self.worker_rank,
-                world_size=self.world_size,
+                worker_size=self.worker_size,
                 enable_shuffle=self.enable_shuffle,
                 shuffle_seed=self.epoch,  # epoch id as shuffle random seed
             )
@@ -298,11 +297,13 @@ class DataLoaderTest(DataLoaderTrain):
 
     def _process(self, batch):
         batch_size = len(batch)
-        batch = [x.decode(encoding="utf-8").split("\t") for x in batch]
+        batch = [x.numpy().decode(encoding="utf-8").split("\t") for x in batch]
 
-        user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch = [], [], [], [], []
+        impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch = [], [], [], [], [], []
 
         for line in batch:
+            impression_id = line[0]
+
             click_docs = line[3].split()
 
             click_docs, log_mask  = self.pad_to_fix_len(self.trans_to_nindex(click_docs),
@@ -310,13 +311,17 @@ class DataLoaderTest(DataLoaderTrain):
             user_feature = self.news_scoring[click_docs]
 
             sample_news = self.trans_to_nindex([i.split('-')[0] for i in line[4].split()])
-            labels = [int(i.split('-')[1]) for i in line[4].split()]
+            # validation(dev) set has label '<news_id>_(1 for click and 0 for non-click)'
+            # test set has no label '<news_id> without _(1 for click and 0 for non-click)', put a dummy label -1      
+            labels = [int(i.split('-')[1]) if len(i.split('-')) > 1 else -1 for i in line[4].split()]
 
             news_feature = self.news_scoring[sample_news]
             if self.news_bias_scoring is not None:
                 news_bias = self.news_bias_scoring[sample_news]
             else:
                 news_bias = [0] * len(sample_news)
+
+            impression_id_batch.append(impression_id)
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
             news_feature_batch.append(news_feature)
@@ -326,11 +331,9 @@ class DataLoaderTest(DataLoaderTrain):
         if self.enable_gpu:
             user_feature_batch = torch.FloatTensor(user_feature_batch).cuda()
             log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
-            
         else:
             user_feature_batch = torch.FloatTensor(user_feature_batch)
             log_mask_batch = torch.FloatTensor(log_mask_batch)
 
-
-        return user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
+        return impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
 

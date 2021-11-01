@@ -215,7 +215,7 @@ class NewsEncoder(torch.nn.Module):
                         args.num_attention_heads, args.news_query_vector_dim,
                         args.drop_rate, args.enable_gpu)
         })
-    
+
         self.newsname=[name for name in set(args.news_attributes) & set(text_encoders_candidates)]
 
 

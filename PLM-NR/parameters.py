@@ -1,19 +1,19 @@
 import argparse
 import utils
 import logging
-
+import datetime
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",
                         type=str,
-                        default="train_test",
+                        default="test",
                         choices=['train', 'test', 'train_test'])
     parser.add_argument(
         "--root_data_dir",
         type=str,
         default=
-        "../",
+        "~/mind/",
     )
     parser.add_argument("--dataset",
                         type=str,
@@ -29,8 +29,10 @@ def parse_args():
         default='test',
     )
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
+    parser.add_argument("--filename_pred", type=str, \
+        default="prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
     parser.add_argument("--model_dir", type=str, default='./model')
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--npratio", type=int, default=1)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
@@ -40,7 +42,7 @@ def parse_args():
     parser.add_argument("--log_steps", type=int, default=1000)
 
     # model training
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument(
         "--news_attributes",
@@ -102,13 +104,13 @@ def parse_args():
     )
     parser.add_argument("--user_log_mask", type=utils.str2bool, default=True)
     parser.add_argument("--drop_rate", type=float, default=0.2)
-    parser.add_argument("--save_steps", type=int, default=100)
-    parser.add_argument("--max_steps_per_epoch", type=int, default=1000000)
+    parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--max_steps_per_epoch", type=int, default=2000000)
 
     parser.add_argument(
         "--load_ckpt_name",
         type=str,
-        default=None,
+        default="epoch-1-115000.pt",
         help="choose which ckpt to load and test"
     )
     # share

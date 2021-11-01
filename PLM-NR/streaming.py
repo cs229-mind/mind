@@ -4,11 +4,12 @@ import fnmatch
 import random
 import numpy as np
 import tensorflow as tf
-
+# tf.data.experimental.enable_debug_mode()
 import utils
 
 
 def get_files(dirname, filename_pat="*", recursive=False):
+    print(f'get_files: {dirname}, {filename_pat}')
     if not tf.io.gfile.exists(dirname):
         return None
     files = []
@@ -19,12 +20,13 @@ def get_files(dirname, filename_pat="*", recursive=False):
                 files.extend(get_files(path, filename_pat))
         elif fnmatch.fnmatch(x, filename_pat):
             files.append(path)
+    print(f'files: {files}')
     return files
 
 
 def get_worker_files(dirname,
                      worker_rank,
-                     world_size,
+                     worker_size,
                      filename_pat="*",
                      shuffle=False,
                      seed=0):
@@ -38,10 +40,10 @@ def get_worker_files(dirname,
         random.shuffle(all_files)
         # g_mutex.release()
     files = []
-    for i in range(worker_rank, len(all_files), world_size):
+    for i in range(worker_rank, len(all_files), worker_size):
         files.append(all_files[i])
     logging.info(
-        f"worker_rank:{worker_rank}, world_size:{world_size}, shuffle:{shuffle}, seed:{seed}, directory:{dirname}, files:{files}"
+        f"worker_rank:{worker_rank}, worker_size:{worker_size}, shuffle:{shuffle}, seed:{seed}, directory:{dirname}, files:{files}"
     )
     return files
 
@@ -50,6 +52,7 @@ class StreamReader:
     def __init__(self, data_paths, batch_size, shuffle=False, shuffle_buffer_size=1000):
         tf.config.experimental.set_visible_devices([], device_type="GPU")
         # logging.info(f"visible_devices:{tf.config.experimental.get_visible_devices()}")
+        logging.info(f"data_paths: {data_paths}")
         path_len = len(data_paths)
         # logging.info(f"[StreamReader] path_len:{path_len}, paths: {data_paths}")
         dataset = tf.data.Dataset.list_files(data_paths).interleave(
@@ -63,18 +66,20 @@ class StreamReader:
                 self._process_record(x)),
             cycle_length=path_len,
             block_length=1,
-            num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            num_parallel_calls=tf.data.AUTOTUNE)
 
         if shuffle:
             dataset = dataset.shuffle(shuffle_buffer_size, reshuffle_each_iteration=True)
 
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(1)
-        self.next_batch = dataset.make_one_shot_iterator().get_next()
+        self.next_batch = iter(dataset)
         # self.session = None
 
     def _process_record(self, record):
         # iid, uid, time, his, impr
+        tf.print('before _process_record')
+        tf.print(record)
         records = tf.strings.split([record], '\t').values
         sess = tf.strings.split([records[4]], ' ').values  # (num)
         sess_label = tf.strings.split(sess, '-').values
@@ -84,18 +89,16 @@ class StreamReader:
         poss_num = tf.size(sess_poss)
 
         # return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
+        tf.print('after _process_record')        
+        tf.print(sess_poss[:, 0], tf.tile(record, [poss_num]))
         return sess_poss[:, 0], tf.tile(record, [poss_num])
 
     def reset(self):
-        # print(f"StreamReader reset(), {self.session}, pid:{threading.currentThread()}")
-        # if self.session:
-        #     self.session.close()
-        # self.session = tf.compat.v1.Session()
         self.endofstream = False
 
     def get_next(self):
         try:
-            ret = self.next_batch # self.session.run(self.next_batch)
+            ret = next(self.next_batch)
         except tf.errors.OutOfRangeError:
             self.endofstream = True
             return None
@@ -113,7 +116,7 @@ class StreamSampler:
         filename_pat,
         batch_size,
         worker_rank,
-        world_size,
+        worker_size,
         enable_shuffle=False,
         shuffle_buffer_size=1000,
         shuffle_seed=0,
@@ -121,7 +124,7 @@ class StreamSampler:
         data_paths = get_worker_files(
             data_dir,
             worker_rank,
-            world_size,
+            worker_size,
             filename_pat,
             shuffle=enable_shuffle,
             seed=shuffle_seed,
@@ -144,7 +147,7 @@ class StreamSampler:
         if not isinstance(next_batch, np.ndarray) and not isinstance(
                 next_batch, tuple):
             raise StopIteration
-        # print(next_batch.shape)
+        print(next_batch.shape)
         return next_batch
 
     def reach_end(self):
@@ -154,9 +157,9 @@ class StreamSampler:
 class StreamReaderTest(StreamReader):
     def __init__(self, data_paths, batch_size, shuffle=False, shuffle_buffer_size=1000):
         tf.config.experimental.set_visible_devices([], device_type="GPU")
-        # logging.info(f"visible_devices:{tf.config.experimental.get_visible_devices()}")
+        logging.info(f"visible_devices:{tf.config.experimental.get_visible_devices()}")
         path_len = len(data_paths)
-        # logging.info(f"[StreamReader] path_len:{path_len}, paths: {data_paths}")
+        logging.info(f"[StreamReader] path_len:{path_len}, paths: {data_paths}")
         dataset = tf.data.Dataset.list_files(data_paths).interleave(
             lambda x: tf.data.TextLineDataset(x),
             cycle_length=path_len,
@@ -168,8 +171,8 @@ class StreamReaderTest(StreamReader):
             dataset = dataset.shuffle(shuffle_buffer_size, reshuffle_each_iteration=True)
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(1)
-        self.next_batch = dataset.make_one_shot_iterator().get_next()
-        self.session = None
+        self.next_batch = iter(dataset)
+        # self.session = None
 
 
 class StreamSamplerTest(StreamSampler):
@@ -179,7 +182,7 @@ class StreamSamplerTest(StreamSampler):
         filename_pat,
         batch_size,
         worker_rank,
-        world_size,
+        worker_size,
         enable_shuffle=False,
         shuffle_buffer_size=1000,
         shuffle_seed=0,
@@ -187,7 +190,7 @@ class StreamSamplerTest(StreamSampler):
         data_paths = get_worker_files(
             data_dir,
             worker_rank,
-            world_size,
+            worker_size,
             filename_pat,
             shuffle=enable_shuffle,
             seed=shuffle_seed,
@@ -198,12 +201,19 @@ class StreamSamplerTest(StreamSampler):
             enable_shuffle,
             shuffle_buffer_size)
 
+    def __next__(self):
+        """Implement iterator interface."""
+        # logging.info(f"[StreamSampler] __next__")
+        next_batch = self.stream_reader.get_next()
+        # print(next_batch.shape)
+        return next_batch
+
 
 if __name__ == "__main__":
     utils.setuplogger()
     print("start")
     sampler = StreamSampler(
-        "../MIND/test",
+        "../MIND/dev",
         "behaviors*.tsv", 4, 0, 1)
 
     import time

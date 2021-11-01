@@ -9,6 +9,7 @@ from pathlib import Path
 import utils
 import os
 import sys
+import csv
 import logging
 from dataloader import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
@@ -83,7 +84,7 @@ def train(args):
             param.requires_grad = False
 
     news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(args.root_data_dir,
+        os.path.join(os.path.expanduser(args.root_data_dir),
                     f'{args.dataset}/{args.train_dir}/news.tsv'), 
         args,
         tokenizer
@@ -126,11 +127,11 @@ def train(args):
         news_index=news_index,
         news_combined=news_combined,
         word_dict=word_dict,
-        data_dir=os.path.join(args.root_data_dir,
+        data_dir=os.path.join(os.path.expanduser(args.root_data_dir),
                             f'{args.dataset}/{args.train_dir}'),
         filename_pat=args.filename_pat,
         args=args,
-        world_size=hvd_size,
+        worker_size=hvd_size,
         worker_rank=hvd_rank,
         cuda_device_idx=hvd_local_rank,
         enable_prefetch=True,
@@ -164,7 +165,7 @@ def train(args):
                     '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
                         hvd_rank, cnt * args.batch_size, loss.data / cnt,
                         accuary / cnt))
-            
+
             # save model minibatch
             print(hvd_rank,cnt,args.save_steps,cnt%args.save_steps)
             if hvd_rank == 0 and cnt % args.save_steps == 0:
@@ -213,7 +214,10 @@ def test(args):
         ckpt_path = utils.latest_checkpoint(args.model_dir)
 
     assert ckpt_path is not None, 'No ckpt found'
-    checkpoint = torch.load(ckpt_path)
+    if args.enable_gpu:
+        checkpoint = torch.load(ckpt_path)
+    else:
+        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
 
     if 'subcategory_dict' in checkpoint:
         subcategory_dict = checkpoint['subcategory_dict']
@@ -241,7 +245,7 @@ def test(args):
     torch.set_grad_enabled(False)
 
     news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(args.root_data_dir,
+        os.path.join(os.path.expanduser(args.root_data_dir),
                     f'{args.dataset}/{args.test_dir}/news.tsv'), 
         args,
         tokenizer
@@ -285,27 +289,26 @@ def test(args):
     news_scoring = []
     with torch.no_grad():
         for input_ids in tqdm(news_dataloader):
-            input_ids = input_ids.cuda()
+            if args.enable_gpu:
+                input_ids = input_ids.cuda()
             news_vec = model.news_encoder(input_ids)
             news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
             news_scoring.extend(news_vec)
-
 
     news_scoring = np.array(news_scoring)
 
     logging.info("news scoring num: {}".format(news_scoring.shape[0]))
  
-
     dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_scoring,
         word_dict=word_dict,
         news_bias_scoring= None,
-        data_dir=os.path.join(args.root_data_dir,
+        data_dir=os.path.join(os.path.expanduser(args.root_data_dir),
                             f'{args.dataset}/{args.test_dir}'),
         filename_pat=args.filename_pat,
         args=args,
-        world_size=hvd_size,
+        worker_size=hvd_size,
         worker_rank=hvd_rank,
         cuda_device_idx=hvd_local_rank,
         enable_prefetch=True,
@@ -319,6 +322,7 @@ def test(args):
     MRR = []
     nDCG5 = []
     nDCG10 = []
+    SCORE = []
 
     def print_metrics(hvd_local_rank, cnt, x):
         logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
@@ -327,9 +331,7 @@ def test(args):
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    #for cnt, (log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
-    
-    for cnt, (log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
+    for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
         his_lens = torch.sum(log_mask, dim=-1).to(torch.device("cpu")).detach().numpy()
 
         if args.enable_gpu:
@@ -338,9 +340,9 @@ def test(args):
 
         user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 
-        for index, user_vec, news_vec, bias, label, his_len in zip(
-                range(len(labels)), user_vecs, news_vecs, news_bias, labels, his_lens):
-                
+        for index, impression_id, user_vec, news_vec, bias, label, his_len in zip(
+                range(len(labels)), impression_ids, user_vecs, news_vecs, news_bias, labels, his_lens):
+
             if label.mean() == 0 or label.mean() == 1:
                 continue
 
@@ -348,13 +350,15 @@ def test(args):
                 news_vec, user_vec
             )
 
+            # label is -1 is for test set and prediction only
+            if(np.all(label == -1)):
+                SCORE.append([impression_id, score])
+                continue
 
-            
             auc = roc_auc_score(label, score)
             mrr = mrr_score(label, score)
             ndcg5 = ndcg_score(label, score, k=5)
             ndcg10 = ndcg_score(label, score, k=10)
-
 
             AUC.append(auc)
             MRR.append(mrr)
@@ -362,14 +366,31 @@ def test(args):
             nDCG10.append(ndcg10)
 
         if cnt % args.log_steps == 0:
-
             print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     # stop scoring
     dataloader.join()
 
+    # print and save metrics
     for i in range(2):
         print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+
+    # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
+    for score in SCORE:
+        argsort = np.argsort(-score[1])
+        ranks = np.empty_like(argsort)
+        ranks[argsort] = np.arange(len(score[1]))
+        score[1] = (ranks + 1).tolist()
+
+    # save the prediction result
+    outfile = os.path.join("./model", "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
+    def write_tsv(score):
+        with open(outfile, 'wt') as out_file:
+            tsv_writer = csv.writer(out_file, delimiter='\t')
+            tsv_writer.writerows(score)
+    write_tsv(SCORE)
+
+
 if __name__ == "__main__":
     utils.setuplogger()
     args = parse_args()
