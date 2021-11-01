@@ -5,6 +5,10 @@ import torch
 import numpy as np
 import argparse
 import re
+import multiprocessing
+from spacy.util import minibatch
+from joblib import Parallel, delayed
+from functools import partial
 
 
 def word_tokenize(sent):
@@ -124,9 +128,36 @@ def latest_checkpoint(directory):
     return os.path.join(directory,
                         all_checkpoints[max(all_checkpoints.keys())])
 
+
 def get_checkpoint(directory, ckpt_name):
     ckpt_path = os.path.join(directory, ckpt_name)
     if os.path.exists(ckpt_path):
         return ckpt_path
     else:
         return None
+
+
+# execute function to process the docs by multi-threading
+def parallel(func, docs, batch_size=1024, n_jobs=multiprocessing.cpu_count() - 1, prefer='processes', synchronize=False, *args):
+    logging.debug("Start the batch processing, there are {} docs.".format(len(docs)))
+    docs = [[i, doc] for i, doc in enumerate(docs)]
+    partitions = minibatch(docs, size=batch_size)
+    results = []
+    if synchronize or len(docs) <= batch_size:
+        for i, batch in enumerate(partitions):
+            results.append(func(*args, batch, i))
+    else:
+        executor = Parallel(n_jobs=n_jobs, backend='loky' if prefer == 'processes' else 'threading',
+                            prefer='processes' if prefer == 'processes' else "threads")
+        results = executor(delayed(partial(func, *args))(batch, i) for i, batch in enumerate(partitions))
+    # merge the results from multiple batches back into list of docs
+    merged_results = []
+    # results.sort(key=lambda x: x[1])  # retain the order just in case executor doesn't keep the original order
+    for result in results:
+        merged_results.extend(result[0])
+    logging.debug(('result after batch processing: {}'.format(merged_results[0])))
+    logging.debug(('number of final result after batch processing: {}'.format(len(merged_results))))
+    for doc, result in zip(docs, merged_results):
+        if doc[0] != result[0]:
+            raise ValueError('Mismatch in batch processing, abort!')
+    return [result[1] for result in merged_results]

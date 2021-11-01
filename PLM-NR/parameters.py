@@ -52,7 +52,6 @@ def parse_args():
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
     parser.add_argument("--process_uet", type=utils.str2bool, default=False)
     parser.add_argument("--process_bing", type=utils.str2bool, default=False)
-       
     parser.add_argument("--num_words_title", type=int, default=24)
     parser.add_argument("--num_words_abstract", type=int, default=50)
     parser.add_argument("--num_words_body", type=int, default=50)
