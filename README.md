@@ -26,3 +26,7 @@ horovodrun -n 3 python3 test.py --check-build
 
 # RUN
 horovodrun -n 2 python3 run.py
+
+folder structure:
+
+![image](https://user-images.githubusercontent.com/28990806/139605841-f20dfc64-1520-4891-a600-474253cc53de.png)
