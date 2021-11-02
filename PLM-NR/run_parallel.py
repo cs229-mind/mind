@@ -292,9 +292,9 @@ def test(args):
         for input_ids in tqdm(news_dataloader):
             if args.enable_gpu:
                 input_ids = input_ids.cuda()
-            # news_vec = model.news_encoder(input_ids)
-            # news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
-            news_vec = np.zeros((len(input_ids), 64))
+            news_vec = model.news_encoder(input_ids)
+            news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
+            # news_vec = np.zeros((len(input_ids), 64))
             news_scoring.extend(news_vec)
 
     news_scoring = np.array(news_scoring)

@@ -107,7 +107,7 @@ def train(args):
     
     model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
     word_dict = None
-    
+
     if args.enable_gpu:
         model = model.cuda()
 

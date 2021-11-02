@@ -7,7 +7,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",
                         type=str,
-                        default="test",
+                        default="train",
                         choices=['train', 'test', 'train_test'])
     parser.add_argument(
         "--root_data_dir",
@@ -34,12 +34,12 @@ def parse_args():
     parser.add_argument("--model_dir", type=str, default='./model')
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--npratio", type=int, default=1)
-    parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
+    parser.add_argument("--enable_gpu", type=utils.str2bool, default=False)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--filter_num", type=int, default=0)
-    parser.add_argument("--log_steps", type=int, default=5000)
+    parser.add_argument("--log_steps", type=int, default=1000)
 
     # model training
     parser.add_argument("--epochs", type=int, default=4)

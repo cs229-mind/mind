@@ -150,7 +150,7 @@ class DataLoaderTrain(IterableDataset):
 
             sess_news = [i.split('-') for i in line[4].split()]
             sess_neg = [i[0] for i in sess_news if i[-1] == '0']
-        
+
             poss = self.trans_to_nindex([poss])
             sess_neg = self.trans_to_nindex(sess_neg)
 

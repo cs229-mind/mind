@@ -88,10 +88,10 @@ class StreamReader:
         record = tf.expand_dims(record, axis=0)
         poss_num = tf.size(sess_poss)
 
-        # return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
-        # tf.print('after _process_record')        
-        # tf.print(sess_poss[:, 0], tf.tile(record, [poss_num]))
-        return sess_poss[:, 0], tf.tile(record, [poss_num])
+        # tf.print('after _process_record')       
+        # tf.print(sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0))
+        return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
+        # return sess_poss[:, 0], tf.tile(record, [poss_num])
 
     def reset(self):
         self.endofstream = False
