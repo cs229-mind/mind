@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument("--model_dir", type=str, default='./model')
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--npratio", type=int, default=1)
-    parser.add_argument("--enable_gpu", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=2)
@@ -109,7 +109,7 @@ def parse_args():
     parser.add_argument(
         "--load_ckpt_name",
         type=str,
-        default="epoch-1-115000.pt",
+        default="epoch-1-0.pt",
         help="choose which ckpt to load and test"
     )
     # share
