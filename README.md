@@ -45,7 +45,10 @@ upload the prediction_<20211031233724>.tsv in model folder as described in the f
 
 # Folder Structure:
 By default: training data in train folder, evalution data in dev folder and test data in test folder.
-  - training and evaluation supports multiple gpus, to speed up, the behavior data can be splitted to multiple files for interleave.
+  - training and evaluation supports multiple gpus, to speed up, the behavior data can be splitted to multiple files for interleave
+    - command: 
+      wc -l behavior.tsv
+      split behavior.tsv -l your_num --verbose
 By default: trained model will be saved to model folder, prediction result in tsv format ready for submission to leaderborad system will be saved to model folder.
 
 ![image](https://user-images.githubusercontent.com/28990806/139605879-06eb35b8-5749-4cbf-9977-0ab10d977a54.png)

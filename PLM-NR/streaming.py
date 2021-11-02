@@ -66,7 +66,7 @@ class StreamReader:
                 self._process_record(x)),
             cycle_length=path_len,
             block_length=1,
-            num_parallel_calls=tf.data.AUTOTUNE)
+            num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
         if shuffle:
             dataset = dataset.shuffle(shuffle_buffer_size, reshuffle_each_iteration=True)
@@ -78,8 +78,8 @@ class StreamReader:
 
     def _process_record(self, record):
         # iid, uid, time, his, impr
-        tf.print('before _process_record')
-        tf.print(record)
+        # tf.print('before _process_record')
+        # tf.print(record)
         records = tf.strings.split([record], '\t').values
         sess = tf.strings.split([records[4]], ' ').values  # (num)
         sess_label = tf.strings.split(sess, '-').values
@@ -89,8 +89,8 @@ class StreamReader:
         poss_num = tf.size(sess_poss)
 
         # return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
-        tf.print('after _process_record')        
-        tf.print(sess_poss[:, 0], tf.tile(record, [poss_num]))
+        # tf.print('after _process_record')        
+        # tf.print(sess_poss[:, 0], tf.tile(record, [poss_num]))
         return sess_poss[:, 0], tf.tile(record, [poss_num])
 
     def reset(self):
@@ -147,7 +147,6 @@ class StreamSampler:
         if not isinstance(next_batch, np.ndarray) and not isinstance(
                 next_batch, tuple):
             raise StopIteration
-        print(next_batch.shape)
         return next_batch
 
     def reach_end(self):
@@ -205,7 +204,6 @@ class StreamSamplerTest(StreamSampler):
         """Implement iterator interface."""
         # logging.info(f"[StreamSampler] __next__")
         next_batch = self.stream_reader.get_next()
-        # print(next_batch.shape)
         return next_batch
 
 
