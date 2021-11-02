@@ -12,7 +12,7 @@ import sys
 import csv
 import logging
 import datetime
-from dataloader import DataLoaderTrain, DataLoaderTest
+from dataloader_parallel import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
@@ -292,8 +292,9 @@ def test(args):
         for input_ids in tqdm(news_dataloader):
             if args.enable_gpu:
                 input_ids = input_ids.cuda()
-            news_vec = model.news_encoder(input_ids)
-            news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
+            # news_vec = model.news_encoder(input_ids)
+            # news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
+            news_vec = np.zeros((len(input_ids), 64))
             news_scoring.extend(news_vec)
 
     news_scoring = np.array(news_scoring)
@@ -332,20 +333,30 @@ def test(args):
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    def score_func(docs, model):
-        log_vecs, log_mask, impression_ids, news_vecs, news_bias, labels = [], [], [], [], [], [], []
-        for (impression_id, log_vec, mask, news_vec, bias, label) in docs:
+    def score_func(model, batch):
+        log_vecs, log_mask, impression_ids, news_vecs, news_bias, labels = [], [], [], [], [], []
+        for (impression_id, log_vec, mask, news_vec, bias, label) in batch:
             impression_ids.append(impression_id)                
             log_vecs.append(log_vec)
             log_mask.append(mask)
             news_vecs.append(news_vec)
             news_bias.append(bias)
             labels.append(label)
+        if args.enable_gpu:
+            log_vecs = torch.FloatTensor(log_vecs).cuda()
+            log_mask = torch.FloatTensor(log_mask).cuda()
+        else:
+            log_vecs = torch.FloatTensor(log_vecs)
+            log_mask = torch.FloatTensor(log_mask)
+
+        if args.enable_gpu:
+            log_vecs = log_vecs.cuda(non_blocking=True)
+            log_mask = log_mask.cuda(non_blocking=True)
 
         user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 
         scores = []
-        for impression_id, user_vec, news_vec, bias, label, his_len in zip(
+        for impression_id, user_vec, news_vec, bias, label in zip(
                 impression_ids, user_vecs, news_vecs, news_bias, labels):
 
             if label.mean() == 0 or label.mean() == 1:
@@ -372,18 +383,10 @@ def test(args):
 
         return scores
 
-    for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
-
-        if args.enable_gpu:
-            log_vecs = log_vecs.cuda(non_blocking=True)
-            log_mask = log_mask.cuda(non_blocking=True)
-
-        docs = [(impression_id, log_vec, mask, news_vec, bias, label) \
-                for impression_id, log_vec, mask, news_vec, bias, label in zip(
-                    impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels)]
+    for cnt, batch in enumerate(dataloader):
         # enable parallel scoring
-        SCORE.extend(utils.parallel(score_func, docs,
-                                    args.batch_size/8, 8, 'threads', False,  # batch_size, n_jobs, synchronize
+        SCORE.extend(utils.parallel(score_func, batch,
+                                    int(args.batch_size/8), 8, 'threads', False,  # batch_size, n_jobs, synchronize
                                     model))
 
         if cnt % args.log_steps == 0:

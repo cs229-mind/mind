@@ -39,7 +39,7 @@ def parse_args():
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--filter_num", type=int, default=0)
-    parser.add_argument("--log_steps", type=int, default=1000)
+    parser.add_argument("--log_steps", type=int, default=5000)
 
     # model training
     parser.add_argument("--epochs", type=int, default=4)

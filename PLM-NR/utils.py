@@ -137,27 +137,22 @@ def get_checkpoint(directory, ckpt_name):
         return None
 
 
-# execute function to process the docs by multi-threading
-def parallel(func, docs, batch_size=1024, n_jobs=multiprocessing.cpu_count() - 1, prefer='processes', synchronize=False, *args):
-    logging.debug("Start the batch processing, there are {} docs.".format(len(docs)))
-    docs = [[i, doc] for i, doc in enumerate(docs)]
-    partitions = minibatch(docs, size=batch_size)
+# execute function to process the batch by multi-threading
+def parallel(func, batch, batch_size=1024, n_jobs=multiprocessing.cpu_count() - 1, prefer='processes', synchronize=False, *args):
+    logging.debug("Start the batch processing, there are {} batch.".format(len(batch)))
+    partitions = minibatch(batch, size=batch_size)
     results = []
-    if synchronize or len(docs) <= batch_size:
-        for i, batch in enumerate(partitions):
-            results.append(func(*args, batch, i))
+    if synchronize or len(batch) <= batch_size:
+        for batch in partitions:
+            results.append(func(*args, batch))
     else:
         executor = Parallel(n_jobs=n_jobs, backend='loky' if prefer == 'processes' else 'threading',
                             prefer='processes' if prefer == 'processes' else "threads")
-        results = executor(delayed(partial(func, *args))(batch, i) for i, batch in enumerate(partitions))
-    # merge the results from multiple batches back into list of docs
+        results = executor(delayed(partial(func, *args))(batch) for batch in partitions)
+    # merge the results from multiple batches back into list of batch
     merged_results = []
-    # results.sort(key=lambda x: x[1])  # retain the order just in case executor doesn't keep the original order
     for result in results:
-        merged_results.extend(result[0])
-    logging.debug(('result after batch processing: {}'.format(merged_results[0])))
+        merged_results.extend(result)
+    logging.debug(('sample result after batch processing: {}'.format(merged_results[0])))
     logging.debug(('number of final result after batch processing: {}'.format(len(merged_results))))
-    for doc, result in zip(docs, merged_results):
-        if doc[0] != result[0]:
-            raise ValueError('Mismatch in batch processing, abort!')
-    return [result[1] for result in merged_results]
+    return merged_results

@@ -299,7 +299,7 @@ def test(args):
     news_scoring = np.array(news_scoring)
 
     logging.info("news scoring num: {}".format(news_scoring.shape[0]))
- 
+
     dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_scoring,
@@ -332,42 +332,42 @@ def test(args):
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
-        his_lens = torch.sum(log_mask, dim=-1).to(torch.device("cpu")).detach().numpy()
+    with torch.no_grad():
+        for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
 
-        if args.enable_gpu:
-            log_vecs = log_vecs.cuda(non_blocking=True)
-            log_mask = log_mask.cuda(non_blocking=True)
+            if args.enable_gpu:
+                log_vecs = log_vecs.cuda(non_blocking=True)
+                log_mask = log_mask.cuda(non_blocking=True)
 
-        user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+            user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 
-        for index, impression_id, user_vec, news_vec, bias, label, his_len in zip(
-                range(len(labels)), impression_ids, user_vecs, news_vecs, news_bias, labels, his_lens):
+            for impression_id, user_vec, news_vec, bias, label in zip(
+                    impression_ids, user_vecs, news_vecs, news_bias, labels):
 
-            if label.mean() == 0 or label.mean() == 1:
-                continue
+                if label.mean() == 0 or label.mean() == 1:
+                    continue
 
-            score = np.dot(
-                news_vec, user_vec
-            )
+                score = np.dot(
+                    news_vec, user_vec
+                )
 
             # label is -1 is for test set and prediction only
-            if(np.all(label == -1)):
-                SCORE.append([impression_id, score])
-                continue
+                if(np.all(label == -1)):
+                    SCORE.append([impression_id, score])
+                    continue
 
-            auc = roc_auc_score(label, score)
-            mrr = mrr_score(label, score)
-            ndcg5 = ndcg_score(label, score, k=5)
-            ndcg10 = ndcg_score(label, score, k=10)
+                auc = roc_auc_score(label, score)
+                mrr = mrr_score(label, score)
+                ndcg5 = ndcg_score(label, score, k=5)
+                ndcg10 = ndcg_score(label, score, k=10)
 
-            AUC.append(auc)
-            MRR.append(mrr)
-            nDCG5.append(ndcg5)
-            nDCG10.append(ndcg10)
+                AUC.append(auc)
+                MRR.append(mrr)
+                nDCG5.append(ndcg5)
+                nDCG10.append(ndcg10)
 
-        if cnt % args.log_steps == 0:
-            print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+            if cnt % args.log_steps == 0:
+                print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     # stop scoring
     dataloader.join()
