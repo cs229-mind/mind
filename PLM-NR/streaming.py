@@ -1,4 +1,6 @@
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+import os
 import logging
 import fnmatch
 import random
@@ -78,8 +80,8 @@ class StreamReader:
 
     def _process_record(self, record):
         # iid, uid, time, his, impr
-        # tf.print('before _process_record')
-        # tf.print(record)
+        tf.print('before _process_record')
+        tf.print(record)
         records = tf.strings.split([record], '\t').values
         sess = tf.strings.split([records[4]], ' ').values  # (num)
         sess_label = tf.strings.split(sess, '-').values
@@ -88,8 +90,8 @@ class StreamReader:
         record = tf.expand_dims(record, axis=0)
         poss_num = tf.size(sess_poss)
 
-        # tf.print('after _process_record')       
-        # tf.print(sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0))
+        tf.print('after _process_record')
+        tf.print(sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0))
         return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
         # return sess_poss[:, 0], tf.tile(record, [poss_num])
 

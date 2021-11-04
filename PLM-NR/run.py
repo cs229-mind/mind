@@ -70,7 +70,6 @@ def train(args):
     else:
         ckpt_path = utils.latest_checkpoint(args.model_dir)
 
-
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
 
@@ -232,7 +231,7 @@ def test(args):
     config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
     bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
     model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
-    
+
     if args.enable_gpu:
         model.cuda()
 
@@ -324,6 +323,7 @@ def test(args):
     nDCG5 = []
     nDCG10 = []
     SCORE = []
+    outfile = os.path.join("./model", args.filename_pred)
 
     def print_metrics(hvd_local_rank, cnt, x):
         logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
@@ -332,14 +332,32 @@ def test(args):
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
+    def write_score(SCORE, outfile):
+        # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
+        for score in tqdm(SCORE):
+            argsort = np.argsort(-score[1])
+            ranks = np.empty_like(argsort)
+            ranks[argsort] = np.arange(len(score[1]))
+            score[1] = (ranks + 1).tolist()
+
+        # save the prediction result
+        def write_tsv(score):
+            with open(outfile, 'a') as out_file:
+                tsv_writer = csv.writer(out_file, delimiter='\t')
+                tsv_writer.writerows(score)
+        write_tsv(SCORE)
+
     with torch.no_grad():
         for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
+            logging.info(f"start new batch {cnt}")
 
             if args.enable_gpu:
                 log_vecs = log_vecs.cuda(non_blocking=True)
                 log_mask = log_mask.cuda(non_blocking=True)
 
+            logging.info(f"encoding starting {cnt}")
             user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+            logging.info(f"encoding finished {cnt}")
 
             for impression_id, user_vec, news_vec, bias, label in zip(
                     impression_ids, user_vecs, news_vecs, news_bias, labels):
@@ -367,29 +385,27 @@ def test(args):
                 nDCG10.append(ndcg10)
 
             if cnt % args.log_steps == 0:
+                # print_metrics(hvd_rank, cnt * args.batch_size, [1.0])
                 print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
+            if cnt % args.save_steps == 0:
+                if len(SCORE) > 0:
+                    logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
+                    write_score(SCORE, outfile)
+                    SCORE = []
+                references = 1
+                while references > 0:
+                    references = gc.collect()
+                    logging.info("Garbage Collection: Collected {} objects".format(references))
+
     # stop scoring
+    logging.info("Stop scoring")
     dataloader.join()
 
     # print and save metrics
     for i in range(2):
+        logging.info("Print final metrics")
         print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
-
-    # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
-    for score in SCORE:
-        argsort = np.argsort(-score[1])
-        ranks = np.empty_like(argsort)
-        ranks[argsort] = np.arange(len(score[1]))
-        score[1] = (ranks + 1).tolist()
-
-    # save the prediction result
-    outfile = os.path.join("./model", "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
-    def write_tsv(score):
-        with open(outfile, 'wt') as out_file:
-            tsv_writer = csv.writer(out_file, delimiter='\t')
-            tsv_writer.writerows(score)
-    write_tsv(SCORE)
 
 
 if __name__ == "__main__":

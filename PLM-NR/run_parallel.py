@@ -283,7 +283,7 @@ def test(args):
 
     news_dataset = NewsDataset(news_combined)
     news_dataloader = DataLoader(news_dataset,
-                                batch_size=args.batch_size * 4,
+                                batch_size=args.batch_size,
                                 num_workers=args.num_workers,
                                 collate_fn=news_collate_fn)
 
@@ -300,7 +300,7 @@ def test(args):
     news_scoring = np.array(news_scoring)
 
     logging.info("news scoring num: {}".format(news_scoring.shape[0]))
- 
+
     dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_scoring,
