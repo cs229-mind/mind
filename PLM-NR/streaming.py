@@ -1,6 +1,4 @@
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-import os
 import logging
 import fnmatch
 import random

@@ -1,3 +1,5 @@
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 import numpy as np
 import torch
 import pickle
@@ -323,7 +325,7 @@ def test(args):
     nDCG5 = []
     nDCG10 = []
     SCORE = []
-    outfile = os.path.join("./model", args.filename_pred)
+    outfile = os.path.join("./model", "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
 
     def print_metrics(hvd_local_rank, cnt, x):
         logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \

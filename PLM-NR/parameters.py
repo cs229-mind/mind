@@ -29,8 +29,6 @@ def parse_args():
         default='test',
     )
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
-    parser.add_argument("--filename_pred", type=str, \
-        default="prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
     parser.add_argument("--model_dir", type=str, default='./model')
     parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--npratio", type=int, default=1)
