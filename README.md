@@ -52,3 +52,17 @@ By default: training data in train folder, evalution data in dev folder and test
 By default: trained model will be saved to model folder, prediction result in tsv format ready for submission to leaderborad system will be saved to model folder.
 
 ![image](https://user-images.githubusercontent.com/28990806/139605879-06eb35b8-5749-4cbf-9977-0ab10d977a54.png)
+
+
+# Result:
+  - Trivial baseline
+
+![image](https://user-images.githubusercontent.com/28990806/140453132-a592dce6-1821-438a-b11a-3e057a2b9a5d.png)
+
+  - Two tower model
+
+![image](https://user-images.githubusercontent.com/28990806/140453040-73cd7079-b181-4e61-aad6-6a2d52524c01.png)
+
+
+
+
