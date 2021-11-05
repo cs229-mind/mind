@@ -57,7 +57,7 @@ By default: trained model will be saved to model folder, prediction result in ts
 # Result:
   - Trivial baseline
 
-![image](https://user-images.githubusercontent.com/28990806/140453132-a592dce6-1821-438a-b11a-3e057a2b9a5d.png)
+![image](https://user-images.githubusercontent.com/28990806/140473157-e78c708d-8fb1-4c8b-a785-2f8dd4425d19.png)
 
   - Two tower model
 
