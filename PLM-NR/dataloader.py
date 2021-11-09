@@ -110,7 +110,7 @@ class DataLoaderTrain(IterableDataset):
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
             # put a None object to communicate the end of queue
-            self.outputs.put(None)                
+            self.outputs.put(None)
         except:
             # put a None object to communicate the end of queue
             self.outputs.put(None)            

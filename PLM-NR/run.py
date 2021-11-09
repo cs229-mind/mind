@@ -115,6 +115,19 @@ def train(args):
     if args.enable_gpu:
         model = model.cuda()
 
+    if args.enable_incremental:
+        assert ckpt_path is not None, 'No ckpt found'
+        if args.enable_gpu:
+            checkpoint = torch.load(ckpt_path)
+        else:
+            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        category_dict = checkpoint['category_dict']
+        subcategory_dict = checkpoint['subcategory_dict']
+        word_dict = checkpoint['word_dict']
+        domain_dict = checkpoint['domain_dict']
+        model.load_state_dict(checkpoint['model_state_dict'])
+        logging.info(f"Model loaded from {ckpt_path} for incremental training")
+
     lr_scaler = hvd.local_size()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     if args.enable_hvd:
@@ -177,7 +190,7 @@ def train(args):
                         accuary / cnt))
 
             # save model minibatch
-            logging.info(hvd_rank,cnt,args.save_steps,cnt%args.save_steps)
+            logging.info('[{}] Ed: {} {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
             if hvd_rank == 0 and cnt % args.save_steps == 0:
                 ckpt_path = os.path.join(args.model_dir, f'epoch-{ep+1}-{cnt}.pt')
                 torch.save(
@@ -366,9 +379,7 @@ def test(args):
                 log_vecs = log_vecs.cuda(non_blocking=True)
                 log_mask = log_mask.cuda(non_blocking=True)
 
-            # logging.info(f"encoding starting {cnt}")
             user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
-            # logging.info(f"encoding finished {cnt}")
 
             for impression_id, user_vec, news_vec, bias, label in zip(
                     impression_ids, user_vecs, news_vecs, news_bias, labels):

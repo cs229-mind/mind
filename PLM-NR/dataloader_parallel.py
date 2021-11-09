@@ -264,7 +264,7 @@ class DataLoaderTest(DataLoaderTrain):
         self.sampler = StreamSamplerTest(
             data_dir=self.data_dir,
             filename_pat=self.filename_pat,
-            batch_size=self.batch_size,
+            batch_size=self.batch_size * 8,
             worker_rank=self.worker_rank,
             worker_size=self.worker_size,
             enable_shuffle=self.enable_shuffle,
@@ -297,8 +297,6 @@ class DataLoaderTest(DataLoaderTrain):
                 context = utils.parallel(self._process, batch,
                                          int(len(batch)/8), 8, 'threads', True,  # batch_size, n_jobs, synchronize
                                          )
-                self.outputs.put(context)
-                self.aval_count += 1
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
             # put a None object to communicate the end of queue
@@ -352,5 +350,8 @@ class DataLoaderTest(DataLoaderTrain):
         batch = [(impression_id, user_feature, log_mask, news_feature, news_bias, label) \
                 for impression_id, user_feature, log_mask, news_feature, news_bias, label in zip(
                     impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch)]
+
+        self.outputs.put(context)
+        self.aval_count += 1
 
         return batch

@@ -30,10 +30,11 @@ def parse_args():
     )
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
     parser.add_argument("--model_dir", type=str, default='./model')
-    parser.add_argument("--batch_size", type=int, default=512)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--npratio", type=int, default=1)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
+    parser.add_argument("--enable_incremental", type=utils.str2bool, default=True)
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--filter_num", type=int, default=0)
@@ -101,7 +102,7 @@ def parse_args():
     )
     parser.add_argument("--user_log_mask", type=utils.str2bool, default=True)
     parser.add_argument("--drop_rate", type=float, default=0.2)
-    parser.add_argument("--save_steps", type=int, default=500)
+    parser.add_argument("--save_steps", type=int, default=2000)
     parser.add_argument("--max_steps_per_epoch", type=int, default=200000)
 
     parser.add_argument(
