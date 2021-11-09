@@ -192,12 +192,18 @@ class DataLoaderTrain(IterableDataset):
         return self
 
     def __next__(self):
+        print("!!!!!!!! get !!!!!!! {}".format(self.aval_count))
         if self.sampler and self.sampler.reach_end() and self.aval_count == 0:
             raise StopIteration
         if self.enable_prefetch:
+            print("!!!!!!!! waiting !!!!!!! {}".format(self.aval_count))
             next_batch = self.outputs.get()
+            print("!!!!!!!! finished !!!!!!! {}".format(self.aval_count))
             self.outputs.task_done()
             self.aval_count -= 1
+            # a None object from producer means the end of queue
+            if next_batch is None:
+                raise StopIteration
         else:
             next_batch = self._process(self.sampler.__next__())
         return next_batch
@@ -284,6 +290,8 @@ class DataLoaderTest(DataLoaderTrain):
             # t0 = time.time()
             for batch in self.sampler:
                 if self.stopped:
+                    # put a None object to communicate the end of queue
+                    self.outputs.put(None)                    
                     break
                 # context = self._process(batch)
                 context = utils.parallel(self._process, batch,
@@ -293,7 +301,11 @@ class DataLoaderTest(DataLoaderTrain):
                 self.aval_count += 1
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
         except:
+            # put a None object for producer to communicate the end of queue 
+            self.outputs.put(None)            
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise

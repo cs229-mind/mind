@@ -71,7 +71,8 @@ class StreamReader:
         if shuffle:
             dataset = dataset.shuffle(shuffle_buffer_size, reshuffle_each_iteration=True)
 
-        dataset = dataset.batch(batch_size)
+        # repeat the dataset iterator for training
+        dataset = dataset.repeat().batch(batch_size)
         dataset = dataset.prefetch(1)
         self.next_batch = iter(dataset)
         # self.session = None
@@ -101,7 +102,7 @@ class StreamReader:
             ret = next(self.next_batch)
         except tf.errors.OutOfRangeError:
             self.endofstream = True
-            return None
+            raise StopIteration
         return ret
 
     def reach_end(self):
@@ -143,9 +144,13 @@ class StreamSampler:
     def __next__(self):
         """Implement iterator interface."""
         # logging.info(f"[StreamSampler] __next__")
-        next_batch = self.stream_reader.get_next()
-        if not isinstance(next_batch, np.ndarray) and not isinstance(
-                next_batch, tuple):
+        try:
+            next_batch = self.stream_reader.get_next()
+            if not isinstance(next_batch, np.ndarray) and not isinstance(
+                    next_batch, tuple):
+                raise StopIteration
+        except tf.errors.OutOfRangeError:
+            logging.info("[StreamSampler] __next__ OutOfRangeError raised, stopping the iteration")
             raise StopIteration
         return next_batch
 
@@ -203,15 +208,19 @@ class StreamSamplerTest(StreamSampler):
     def __next__(self):
         """Implement iterator interface."""
         # logging.info(f"[StreamSampler] __next__")
-        next_batch = self.stream_reader.get_next()
+        try:
+            next_batch = self.stream_reader.get_next()
+        except tf.errors.OutOfRangeError:
+            logging.info("[StreamSamplerTest] __next__ OutOfRangeError raised, stopping the iteration")
+            raise StopIteration
         return next_batch
 
 
 if __name__ == "__main__":
     utils.setuplogger()
     print("start")
-    sampler = StreamSampler(
-        "../MIND/dev",
+    sampler = StreamSamplerTest(
+        "../MIND/test",
         "behaviors*.tsv", 4, 0, 1)
 
     import time

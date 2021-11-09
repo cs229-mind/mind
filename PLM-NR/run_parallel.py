@@ -12,6 +12,7 @@ import sys
 import csv
 import logging
 import datetime
+import time
 from dataloader_parallel import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
@@ -201,6 +202,7 @@ def train(args):
 
 
 def test(args):
+    start_time = time.time()
 
     if args.enable_hvd:
         import horovod.torch as hvd
@@ -354,6 +356,7 @@ def test(args):
             log_mask = log_mask.cuda(non_blocking=True)
 
         user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+        # scores = np.dot(news_vec, user_vec)
 
         scores = []
         for impression_id, user_vec, news_vec, bias, label in zip(
@@ -385,9 +388,10 @@ def test(args):
 
     for cnt, batch in enumerate(dataloader):
         # enable parallel scoring
-        SCORE.extend(utils.parallel(score_func, batch,
-                                    int(args.batch_size/8), 8, 'threads', False,  # batch_size, n_jobs, synchronize
-                                    model))
+        SCORE.extend(score_func(model, batch))
+        # SCORE.extend(utils.parallel(score_func, batch,
+        #                             int(args.batch_size/8), 8, 'threads', False,  # batch_size, n_jobs, synchronize
+        #                             model))
 
         if cnt % args.log_steps == 0:
             print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
@@ -396,11 +400,12 @@ def test(args):
     dataloader.join()
 
     # print and save metrics
-    for i in range(2):
-        print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    logging.info("Print final metrics")
+    print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
-    for score in SCORE:
+    logging.info("Process scoring")
+    for score in tqdm(SCORE):
         argsort = np.argsort(-score[1])
         ranks = np.empty_like(argsort)
         ranks[argsort] = np.arange(len(score[1]))
@@ -413,6 +418,8 @@ def test(args):
             tsv_writer = csv.writer(out_file, delimiter='\t')
             tsv_writer.writerows(score)
     write_tsv(SCORE)
+
+    logging.info(f"Time taken: {time.time() - start_time}")
 
 
 if __name__ == "__main__":

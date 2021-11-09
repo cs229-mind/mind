@@ -7,7 +7,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",
                         type=str,
-                        default="test",
+                        default="train",
                         choices=['train', 'test', 'train_test'])
     parser.add_argument(
         "--root_data_dir",
@@ -107,7 +107,7 @@ def parse_args():
     parser.add_argument(
         "--load_ckpt_name",
         type=str,
-        default="epoch-1-40000.pt",
+        default="epoch-1-104500.pt",
         help="choose which ckpt to load and test"
     )
     # share

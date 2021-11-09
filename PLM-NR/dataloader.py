@@ -101,13 +101,19 @@ class DataLoaderTrain(IterableDataset):
             # t0 = time.time()
             for batch in self.sampler:
                 if self.stopped:
+                    # put a None object to communicate the end of queue
+                    self.outputs.put(None)
                     break
                 context = self._process(batch)
                 self.outputs.put(context)
                 self.aval_count += 1
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)                
         except:
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)            
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise
@@ -198,6 +204,9 @@ class DataLoaderTrain(IterableDataset):
             next_batch = self.outputs.get()
             self.outputs.task_done()
             self.aval_count -= 1
+            # a None object from producer means the end of queue
+            if next_batch is None:
+                raise StopIteration
         else:
             next_batch = self._process(self.sampler.__next__())
         return next_batch
@@ -253,6 +262,13 @@ class DataLoaderTest(DataLoaderTrain):
         self.news_index = news_index
         self.word_dict = word_dict
 
+    def start_async(self):
+        self.aval_count = 0
+        self.stopped = False
+        self.outputs = Queue(10)
+        self.pool = ThreadPoolExecutor()
+        self.pool.submit(self._produce)
+
     def start(self):
         self.epoch += 1
         self.sampler = StreamSamplerTest(
@@ -284,13 +300,20 @@ class DataLoaderTest(DataLoaderTrain):
             # t0 = time.time()
             for batch in self.sampler:
                 if self.stopped:
+                    # put a None object to communicate the end of queue
+                    self.outputs.put(None)
                     break
                 context = self._process(batch)
                 self.outputs.put(context)
                 self.aval_count += 1
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
         except:
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
+            self.aval_count += 1
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise
@@ -312,7 +335,7 @@ class DataLoaderTest(DataLoaderTrain):
 
             sample_news = self.trans_to_nindex([i.split('-')[0] for i in line[4].split()])
             # validation(dev) set has label '<news_id>_(1 for click and 0 for non-click)'
-            # test set has no label '<news_id> without _(1 for click and 0 for non-click)', put a dummy label -1      
+            # test set has no label '<news_id> without _(1 for click and 0 for non-click)', put a dummy label -1
             labels = [int(i.split('-')[1]) if len(i.split('-')) > 1 else -1 for i in line[4].split()]
 
             news_feature = self.news_scoring[sample_news]

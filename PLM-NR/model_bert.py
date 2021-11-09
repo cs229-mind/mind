@@ -293,7 +293,7 @@ class UserEncoder(torch.nn.Module):
         else:
             # self.news_padded_news_embedding = None
             self.pad_doc = None
-        
+
 
     def _process_news(self, vec, mask, pad_doc,
                     additive_attention, use_mask=False, 

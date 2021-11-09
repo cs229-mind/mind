@@ -1,5 +1,6 @@
-import os
-os.environ["TOKENIZERS_PARALLELISM"] = "true"
+import faulthandler
+import signal
+faulthandler.register(signal.SIGUSR1.value)
 import numpy as np
 import torch
 import pickle
@@ -14,11 +15,13 @@ import sys
 import csv
 import logging
 import datetime
+import time
 from dataloader import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
 from parameters import parse_args
+from torchsummary import summary
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 
@@ -97,7 +100,7 @@ def train(args):
     news_body, news_body_type, news_body_attmask, \
     news_category, news_domain, news_subcategory = get_doc_input_bert(
         news, news_index, category_dict, domain_dict, subcategory_dict, args)
-    
+
     news_combined = np.concatenate([
         x for x in
         [news_title, news_title_type, news_title_attmask, \
@@ -105,7 +108,7 @@ def train(args):
             news_body, news_body_type, news_body_attmask, \
             news_category, news_domain, news_subcategory]
         if x is not None], axis=1)
-    
+
     model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
     word_dict = None
 
@@ -142,6 +145,8 @@ def train(args):
     )
 
     logging.info('Training...')
+    LOSS = []
+    ACC = []
     for ep in range(args.epochs):
         loss = 0.0
         accuary = 0.0
@@ -156,6 +161,7 @@ def train(args):
                 targets = targets.cuda(non_blocking=True)
 
             bz_loss, y_hat = model(input_ids, log_ids, log_mask, targets)
+            # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
             loss += bz_loss.data.float()
             accuary += utils.acc(targets, y_hat)
             optimizer.zero_grad()
@@ -163,6 +169,8 @@ def train(args):
             optimizer.step()
 
             if cnt % args.log_steps == 0:
+                LOSS.append(loss.data / cnt)
+                ACC.append(accuary / cnt)
                 logging.info(
                     '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
                         hvd_rank, cnt * args.batch_size, loss.data / cnt,
@@ -202,6 +210,7 @@ def train(args):
 
 
 def test(args):
+    start_time = time.time()
 
     if args.enable_hvd:
         import horovod.torch as hvd
@@ -351,15 +360,15 @@ def test(args):
 
     with torch.no_grad():
         for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
-            logging.info(f"start new batch {cnt}")
+            # logging.info(f"start new batch {cnt}")
 
             if args.enable_gpu:
                 log_vecs = log_vecs.cuda(non_blocking=True)
                 log_mask = log_mask.cuda(non_blocking=True)
 
-            logging.info(f"encoding starting {cnt}")
+            # logging.info(f"encoding starting {cnt}")
             user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
-            logging.info(f"encoding finished {cnt}")
+            # logging.info(f"encoding finished {cnt}")
 
             for impression_id, user_vec, news_vec, bias, label in zip(
                     impression_ids, user_vecs, news_vecs, news_bias, labels):
@@ -371,7 +380,7 @@ def test(args):
                     news_vec, user_vec
                 )
 
-            # label is -1 is for test set and prediction only
+                # label is -1 is for test set and prediction only
                 if(np.all(label == -1)):
                     SCORE.append([impression_id, score])
                     continue
@@ -395,19 +404,22 @@ def test(args):
                     logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
                     write_score(SCORE, outfile)
                     SCORE = []
-                references = 1
-                while references > 0:
-                    references = gc.collect()
-                    logging.info("Garbage Collection: Collected {} objects".format(references))
 
     # stop scoring
     logging.info("Stop scoring")
     dataloader.join()
 
+    # save the last batch of scores
+    if len(SCORE) > 0:
+        logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
+        write_score(SCORE, outfile)
+        SCORE = []
+
     # print and save metrics
-    for i in range(2):
-        logging.info("Print final metrics")
-        print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    logging.info("Print final metrics")
+    print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+
+    logging.info(f"Time taken: {time.time() - start_time}")
 
 
 if __name__ == "__main__":
