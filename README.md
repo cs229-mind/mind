@@ -66,3 +66,7 @@ By default: trained model will be saved to model folder, prediction result in ts
 ![image](https://user-images.githubusercontent.com/28990806/140453040-73cd7079-b181-4e61-aad6-6a2d52524c01.png)
   - NRMS (Attention (news encoder) + Attention(user encoder))
 <img width="1318" alt="nrms_model" src="https://user-images.githubusercontent.com/21976032/140476695-365d9b17-b694-46b3-aa0d-9c94250c5c45.png">
+
+  - Two tower model(tuned)
+
+![image](https://user-images.githubusercontent.com/28990806/140866972-2d9e8890-a883-4894-a416-bbe598de9688.png)
