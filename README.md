@@ -34,11 +34,13 @@ HOROVOD_WITH_PYTORCH=1 HOROVOD_WITH_TENSORFLOW=1 pip3 install --no-cache-dir hor
 horovodrun -n 3 python3 test.py --check-build
 
 # RUN
-- for training: horovodrun -n 2 python3 run.py --mode train
+- for training: horovodrun -n 2 python3 run.py --mode train --batch_size=16
 
-- for evaluation: horovodrun -n 2 python3 run.py --mode test --test_dir 'dev'
+- for evaluation: horovodrun -n 2 python3 run.py --mode test --test_dir 'dev' --batch_size=768
 
-- for prediction: horovodrun -n 2 python3 run.py --mode test --test_dir 'test'
+- for prediction: horovodrun -n 2 python3 run.py --mode test --test_dir 'test' --batch_size=768
+
+Debug: while running, command kill -SIGUSR1 your_pid would tell which line of code the thread is running
 
 # Submit
 upload the prediction_<20211031233724>.tsv in model folder as described in the folder structure to leaderboard(https://competitions.codalab.org/competitions/24122#participate)

@@ -105,6 +105,7 @@ class DataLoaderTrain(IterableDataset):
                     self.outputs.put(None)
                     break
                 context = self._process(batch)
+                # print(f"!!!!!!!!!!!! put {self.aval_count}")
                 self.outputs.put(context)
                 self.aval_count += 1
                 # logging.info(f"_produce cost:{time.time()-t0}")
@@ -201,7 +202,9 @@ class DataLoaderTrain(IterableDataset):
         if self.sampler and self.sampler.reach_end() and self.aval_count == 0:
             raise StopIteration
         if self.enable_prefetch:
+            # print(f"!!!!!!!!!!!! get {self.aval_count}")
             next_batch = self.outputs.get()
+            # print(f"!!!!!!!!!!!! get {next_batch}")
             self.outputs.task_done()
             self.aval_count -= 1
             # a None object from producer means the end of queue

@@ -190,7 +190,7 @@ def train(args):
                         accuary / cnt))
 
             # save model minibatch
-            logging.info('[{}] Ed: {} {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
+            logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
             if hvd_rank == 0 and cnt % args.save_steps == 0:
                 ckpt_path = os.path.join(args.model_dir, f'epoch-{ep+1}-{cnt}.pt')
                 torch.save(
