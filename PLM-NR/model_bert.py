@@ -242,7 +242,7 @@ class NewsEncoder(torch.nn.Module):
 
         if args.use_pretrain_news_encoder:
             self.reduce_dim_linear.load_state_dict(
-                torch.load(os.path.join(args.pretrain_news_encoder_path, 
+                torch.load(os.path.join(os.path.expanduser(args.pretrain_news_encoder_path), 
                 'reduce_dim_linear.pkl'))
             )
 

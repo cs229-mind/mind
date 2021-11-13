@@ -219,8 +219,8 @@ class StreamSamplerTest(StreamSampler):
 if __name__ == "__main__":
     utils.setuplogger()
     print("start")
-    sampler = StreamSamplerTest(
-        "../MIND/test",
+    sampler = StreamSampler(
+        "../MIND/train",
         "behaviors*.tsv", 4, 0, 1)
 
     import time

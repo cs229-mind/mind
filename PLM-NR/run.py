@@ -21,7 +21,7 @@ from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
 from parameters import parse_args
-from torchsummary import summary
+# from torchsummary import summary
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 
@@ -71,16 +71,17 @@ def train(args):
 
     if args.load_ckpt_name is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(args.model_dir, args.load_ckpt_name)
+        ckpt_path = utils.get_checkpoint(os.path.expanduser(os.path.expanduser(args.model_dir)), args.load_ckpt_name)
     else:
-        ckpt_path = utils.latest_checkpoint(args.model_dir)
+        ckpt_path = utils.latest_checkpoint(os.path.expanduser(os.path.expanduser(args.model_dir)))
 
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
 
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
+    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
+    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
+    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
 
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
     # freeze parameters
@@ -157,12 +158,24 @@ def train(args):
         enable_gpu=args.enable_gpu,
     )
 
+    outfile = os.path.join(os.path.expanduser(args.model_dir), "history_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
+
+    def write_history(LOSS, ACC, outfile):
+        # format the data: loss, acc
+        data = [(float(loss), float(acc)) for score, acc in zip(LOSS, ACC)]
+        # save the prediction result
+        def write_tsv(data):
+            with open(outfile, 'a') as out_file:
+                tsv_writer = csv.writer(out_file, delimiter='\t')
+                tsv_writer.writerows(data)
+        write_tsv(data)
+
     logging.info('Training...')
-    LOSS = []
-    ACC = []
+    LOSS, ACC = [], []
     for ep in range(args.epochs):
         loss = 0.0
         accuary = 0.0
+        count = 0
         for cnt, (log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
             if cnt > args.max_steps_per_epoch:
                 break
@@ -177,6 +190,7 @@ def train(args):
             # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
             loss += bz_loss.data.float()
             accuary += utils.acc(targets, y_hat)
+            count = cnt
             optimizer.zero_grad()
             bz_loss.backward()
             optimizer.step()
@@ -192,7 +206,7 @@ def train(args):
             # save model minibatch
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
             if hvd_rank == 0 and cnt % args.save_steps == 0:
-                ckpt_path = os.path.join(args.model_dir, f'epoch-{ep+1}-{cnt}.pt')
+                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}.pt')
                 torch.save(
                     {
                         'model_state_dict': model.state_dict(),
@@ -202,13 +216,17 @@ def train(args):
                         'subcategory_dict': subcategory_dict
                     }, ckpt_path)
                 logging.info(f"Model saved to {ckpt_path}")
+                write_history(LOSS, ACC, outfile)
+                LOSS, ACC = [], []
+                logging.info(f"Training history saved to {outfile}")
 
-        loss /= cnt
-        logging.info('epoch: {} loss: {}'.format(ep + 1, loss))
+        loss /= count
+        accuary /= count
+        logging.info('epoch: {} loss: {} accuracy {}'.format(ep + 1, loss, accuary))
 
         # save model last of epoch
         if hvd_rank == 0:
-            ckpt_path = os.path.join(args.model_dir, f'epoch-{ep+1}.pt')
+            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}.pt')
             torch.save(
                 {
                     'model_state_dict': model.state_dict(),
@@ -218,6 +236,11 @@ def train(args):
                     'subcategory_dict': subcategory_dict
                 }, ckpt_path)
             logging.info(f"Model saved to {ckpt_path}")
+        # save history last of epoch
+        if len(LOSS) != 0:
+            write_history(LOSS, ACC, outfile)
+            LOSS, ACC = [], []
+            logging.info(f"Training history saved to {outfile}")        
 
     dataloader.join()
 
@@ -233,9 +256,9 @@ def test(args):
 
     if args.load_ckpt_name is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(args.model_dir, args.load_ckpt_name)
+        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_name)
     else:
-        ckpt_path = utils.latest_checkpoint(args.model_dir)
+        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
     assert ckpt_path is not None, 'No ckpt found'
     if args.enable_gpu:
@@ -347,7 +370,7 @@ def test(args):
     nDCG5 = []
     nDCG10 = []
     SCORE = []
-    outfile = os.path.join("./model", "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
+    outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
 
     def print_metrics(hvd_local_rank, cnt, x):
         logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
@@ -436,7 +459,7 @@ def test(args):
 if __name__ == "__main__":
     utils.setuplogger()
     args = parse_args()
-    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
+    Path(os.path.expanduser(args.model_dir)).mkdir(parents=True, exist_ok=True)
     if 'train' in args.mode:
         train(args)
     if 'test' in args.mode:

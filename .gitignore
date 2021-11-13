@@ -2,3 +2,10 @@
 **/MIND
 **/model
 **/model_bk
+**/*.yaml
+**/*.whl
+**/*.Dockerfile
+**/Dockerfile
+**/bert-base-uncased
+**/*.pyc
+**/*.pyo

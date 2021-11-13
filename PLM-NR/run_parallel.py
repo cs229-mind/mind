@@ -67,9 +67,9 @@ def train(args):
 
     if args.load_ckpt_name is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(args.model_dir, args.load_ckpt_name)
+        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_name)
     else:
-        ckpt_path = utils.latest_checkpoint(args.model_dir)
+        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
 
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
@@ -171,7 +171,7 @@ def train(args):
             # save model minibatch
             print(hvd_rank,cnt,args.save_steps,cnt%args.save_steps)
             if hvd_rank == 0 and cnt % args.save_steps == 0:
-                ckpt_path = os.path.join(args.model_dir, f'epoch-{ep+1}-{cnt}.pt')
+                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}.pt')
                 torch.save(
                     {
                         'model_state_dict': model.state_dict(),
@@ -187,7 +187,7 @@ def train(args):
 
         # save model last of epoch
         if hvd_rank == 0:
-            ckpt_path = os.path.join(args.model_dir, f'epoch-{ep+1}.pt')
+            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}.pt')
             torch.save(
                 {
                     'model_state_dict': model.state_dict(),
@@ -212,9 +212,9 @@ def test(args):
 
     if args.load_ckpt_name is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(args.model_dir, args.load_ckpt_name)
+        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_name)
     else:
-        ckpt_path = utils.latest_checkpoint(args.model_dir)
+        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
     assert ckpt_path is not None, 'No ckpt found'
     if args.enable_gpu:
@@ -425,7 +425,7 @@ def test(args):
 if __name__ == "__main__":
     utils.setuplogger()
     args = parse_args()
-    Path(args.model_dir).mkdir(parents=True, exist_ok=True)
+    Path(os.path.expanduser(args.model_dir)).mkdir(parents=True, exist_ok=True)
     if 'train' in args.mode:
         train(args)
     if 'test' in args.mode:
