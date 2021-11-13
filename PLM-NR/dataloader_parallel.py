@@ -101,13 +101,21 @@ class DataLoaderTrain(IterableDataset):
             # t0 = time.time()
             for batch in self.sampler:
                 if self.stopped:
+                    # put a None object to communicate the end of queue
+                    self.outputs.put(None)
                     break
+                # print(f"!!!!!!!!!!!! put start {self.aval_count}")                
                 context = self._process(batch)
                 self.outputs.put(context)
                 self.aval_count += 1
+                # print(f"!!!!!!!!!!!! put end {self.aval_count}")                   
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)                
         except:
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)            
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise
@@ -115,7 +123,7 @@ class DataLoaderTrain(IterableDataset):
     def start_async(self):
         self.aval_count = 0
         self.stopped = False
-        self.outputs = Queue(10)
+        self.outputs = Queue(100)
         self.pool = ThreadPoolExecutor(1)
         self.pool.submit(self._produce)
 
@@ -192,13 +200,13 @@ class DataLoaderTrain(IterableDataset):
         return self
 
     def __next__(self):
-        print("!!!!!!!! get !!!!!!! {}".format(self.aval_count))
+        # print("!!!!!!!! get !!!!!!! {}".format(self.aval_count))
         if self.sampler and self.sampler.reach_end() and self.aval_count == 0:
             raise StopIteration
         if self.enable_prefetch:
-            print("!!!!!!!! waiting !!!!!!! {}".format(self.aval_count))
+            # print("!!!!!!!! waiting !!!!!!! {}".format(self.aval_count))
             next_batch = self.outputs.get()
-            print("!!!!!!!! finished !!!!!!! {}".format(self.aval_count))
+            # print("!!!!!!!! finished !!!!!!! {}".format(self.aval_count))
             self.outputs.task_done()
             self.aval_count -= 1
             # a None object from producer means the end of queue
@@ -293,10 +301,12 @@ class DataLoaderTest(DataLoaderTrain):
                     # put a None object to communicate the end of queue
                     self.outputs.put(None)                    
                     break
+                # print(f"!!!!!!!!!!!! put start {self.aval_count}")
                 # context = self._process(batch)
-                context = utils.parallel(self._process, batch,
-                                         int(len(batch)/8), 8, 'threads', True,  # batch_size, n_jobs, synchronize
-                                         )
+                context = utils.parallel(self._process, batch)
+                # self.outputs.put(context)
+                # self.aval_count += 1                
+                # print(f"!!!!!!!!!!!! put end {self.aval_count}")
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
             # put a None object to communicate the end of queue
@@ -340,18 +350,20 @@ class DataLoaderTest(DataLoaderTrain):
             news_bias_batch.append(news_bias)
             label_batch.append(np.array(labels))
 
-        # if self.enable_gpu:
-        #     user_feature_batch = torch.FloatTensor(user_feature_batch).cuda()
-        #     log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
-        # else:
-        #     user_feature_batch = torch.FloatTensor(user_feature_batch)
-        #     log_mask_batch = torch.FloatTensor(log_mask_batch)
+            # if self.enable_gpu:
+            #     user_feature_batch = torch.FloatTensor(user_feature_batch).cuda()
+            #     log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
+            # else:
+            #     user_feature_batch = torch.FloatTensor(user_feature_batch)
+            #     log_mask_batch = torch.FloatTensor(log_mask_batch)
 
         batch = [(impression_id, user_feature, log_mask, news_feature, news_bias, label) \
                 for impression_id, user_feature, log_mask, news_feature, news_bias, label in zip(
                     impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch)]
 
-        self.outputs.put(context)
+        # print(f"!!!!!!!!!!!! put start {self.aval_count}")
+        self.outputs.put(batch)
         self.aval_count += 1
+        # print(f"!!!!!!!!!!!! put end {self.aval_count}")
 
         return batch

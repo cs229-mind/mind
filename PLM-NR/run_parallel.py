@@ -75,9 +75,10 @@ def train(args):
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
 
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
+    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
+    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
+    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
 
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
     # freeze parameters
@@ -218,7 +219,7 @@ def test(args):
 
     assert ckpt_path is not None, 'No ckpt found'
     if args.enable_gpu:
-        checkpoint = torch.load(ckpt_path)
+        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
     else:
         checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
 
@@ -230,9 +231,10 @@ def test(args):
     category_dict = checkpoint['category_dict']
     word_dict = checkpoint['word_dict']
     domain_dict = checkpoint['domain_dict']
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
+    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
+    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
+    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
     model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
     
     if args.enable_gpu:

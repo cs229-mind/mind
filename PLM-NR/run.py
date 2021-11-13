@@ -119,7 +119,7 @@ def train(args):
     if args.enable_incremental:
         assert ckpt_path is not None, 'No ckpt found'
         if args.enable_gpu:
-            checkpoint = torch.load(ckpt_path)
+            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
         else:
             checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
         category_dict = checkpoint['category_dict']
@@ -198,6 +198,7 @@ def train(args):
             if cnt % args.log_steps == 0:
                 LOSS.append(loss.data / cnt)
                 ACC.append(accuary / cnt)
+                print('train_loss: {:.5f}'.format(loss.data))
                 logging.info(
                     '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
                         hvd_rank, cnt * args.batch_size, loss.data / cnt,
@@ -262,7 +263,7 @@ def test(args):
 
     assert ckpt_path is not None, 'No ckpt found'
     if args.enable_gpu:
-        checkpoint = torch.load(ckpt_path)
+        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
     else:
         checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
 
@@ -274,9 +275,10 @@ def test(args):
     category_dict = checkpoint['category_dict']
     word_dict = checkpoint['word_dict']
     domain_dict = checkpoint['domain_dict']
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
-    config = AutoConfig.from_pretrained("bert-base-uncased", output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained("bert-base-uncased",config=config)
+    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
+    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
+    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
     model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
 
     if args.enable_gpu:
@@ -365,11 +367,8 @@ def test(args):
 
     from metrics import roc_auc_score, ndcg_score, mrr_score, ctr_score
 
-    AUC = []
-    MRR = []
-    nDCG5 = []
-    nDCG10 = []
-    SCORE = []
+    AUC, MRR, nDCG5, nDCG10, SCORE = [], [], [], [], []
+    count = 0
     outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
 
     def print_metrics(hvd_local_rank, cnt, x):
@@ -397,6 +396,7 @@ def test(args):
     with torch.no_grad():
         for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
             # logging.info(f"start new batch {cnt}")
+            count = cnt
 
             if args.enable_gpu:
                 log_vecs = log_vecs.cuda(non_blocking=True)
@@ -451,7 +451,7 @@ def test(args):
 
     # print and save metrics
     logging.info("Print final metrics")
-    print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     logging.info(f"Time taken: {time.time() - start_time}")
 

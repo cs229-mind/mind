@@ -104,10 +104,11 @@ class DataLoaderTrain(IterableDataset):
                     # put a None object to communicate the end of queue
                     self.outputs.put(None)
                     break
+                # print(f"!!!!!!!!!!!! put start {self.aval_count}")                
                 context = self._process(batch)
-                # print(f"!!!!!!!!!!!! put {self.aval_count}")
                 self.outputs.put(context)
                 self.aval_count += 1
+                # print(f"!!!!!!!!!!!! put end {self.aval_count}")                
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
             # put a None object to communicate the end of queue
@@ -306,9 +307,11 @@ class DataLoaderTest(DataLoaderTrain):
                     # put a None object to communicate the end of queue
                     self.outputs.put(None)
                     break
+                # print(f"!!!!!!!!!!!! put start {self.aval_count}")                 
                 context = self._process(batch)
-                self.outputs.put(context)
+                self.outputs.put(context)             
                 self.aval_count += 1
+                # print(f"!!!!!!!!!!!! put end {self.aval_count}")                    
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
             # put a None object to communicate the end of queue

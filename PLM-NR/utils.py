@@ -138,8 +138,10 @@ def get_checkpoint(directory, ckpt_name):
 
 
 # execute function to process the batch by multi-threading
-def parallel(func, batch, batch_size=1024, n_jobs=multiprocessing.cpu_count() - 1, prefer='processes', synchronize=False, *args):
+def parallel(func, batch, batch_size=None, n_jobs=multiprocessing.cpu_count() - 1, prefer='processes', synchronize=True, *args):
     logging.debug("Start the batch processing, there are {} batch.".format(len(batch)))
+    if batch_size is None:
+        batch_size = int(len(batch) / (multiprocessing.cpu_count() - 1))
     partitions = minibatch(batch, size=batch_size)
     results = []
     if synchronize or len(batch) <= batch_size:
