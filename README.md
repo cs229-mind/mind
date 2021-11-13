@@ -53,6 +53,8 @@ By default: training data in train folder, evalution data in dev folder and test
       split behaviors.tsv -l your_num --verbose
 By default: trained model will be saved to model folder, prediction result in tsv format ready for submission to leaderborad system will be saved to model folder.
 
+By Default: the pretrained model(bert-base-uncased) can be downloaded from https://huggingface.co/bert-base-uncased/ and put it in folder ~/mind/
+
 ![image](https://user-images.githubusercontent.com/28990806/139605879-06eb35b8-5749-4cbf-9977-0ab10d977a54.png)
 
 
