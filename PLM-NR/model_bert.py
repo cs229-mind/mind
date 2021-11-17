@@ -380,7 +380,7 @@ class ModelBert(torch.nn.Module):
         score = torch.bmm(news_vec, user_vector.unsqueeze(-1)).squeeze(dim=-1)
         if compute_loss:
             loss = self.criterion(score, targets)
-            return loss, c
+            return loss
         else:
             return score
 

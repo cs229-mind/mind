@@ -34,11 +34,11 @@ HOROVOD_WITH_PYTORCH=1 HOROVOD_WITH_TENSORFLOW=1 pip3 install --no-cache-dir hor
 horovodrun -n 3 python3 test.py --check-build
 
 # RUN
-- for training: horovodrun -n 2 python3 run.py --mode train --batch_size=16
+- for training: horovodrun -n 6 python3 run.py --mode train --batch_size=64
 
-- for evaluation: horovodrun -n 2 python3 run.py --mode test --test_dir 'dev' --batch_size=768
+- for evaluation: horovodrun -n 6 python3 run.py --mode test --test_dir 'dev' --batch_size=2024
 
-- for prediction: horovodrun -n 2 python3 run.py --mode test --test_dir 'test' --batch_size=768
+- for prediction: horovodrun -n 6 python3 run.py --mode test --test_dir 'test' --batch_size=2024
 
 Debug: while running, command kill -SIGUSR1 your_pid would tell which line of code the thread is running
 

@@ -72,7 +72,7 @@ class StreamReader:
             dataset = dataset.shuffle(shuffle_buffer_size, reshuffle_each_iteration=True)
 
         # repeat the dataset iterator for training
-        dataset = dataset.batch(batch_size)
+        dataset = dataset.repeat().batch(batch_size, drop_remainder=True)
         dataset = dataset.prefetch(1)
         self.next_batch = iter(dataset)
         # self.session = None
