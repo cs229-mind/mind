@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--filter_num", type=int, default=0)
-    parser.add_argument("--log_steps", type=int, default=100)
+    parser.add_argument("--log_steps", type=int, default=1)
 
     # model training
     parser.add_argument("--epochs", type=int, default=4)
@@ -102,13 +102,13 @@ def parse_args():
     )
     parser.add_argument("--user_log_mask", type=utils.str2bool, default=True)
     parser.add_argument("--drop_rate", type=float, default=0.2)
-    parser.add_argument("--save_steps", type=int, default=10000)
+    parser.add_argument("--save_steps", type=int, default=5000)
     parser.add_argument("--max_steps_per_epoch", type=int, default=200000)
 
     parser.add_argument(
         "--load_ckpt_name",
         type=str,
-        default="epoch-2-50000.pt",
+        default="epoch-1-20000.pt",
         help="choose which ckpt to load and test"
     )
     # share

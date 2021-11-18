@@ -218,8 +218,6 @@ class NewsEncoder(torch.nn.Module):
 
         self.newsname=[name for name in set(args.news_attributes) & set(text_encoders_candidates)]
 
-
-            
         name2num = {
             "category": category_dict_size + 1,
             "domain": domain_dict_size + 1,
@@ -275,7 +273,7 @@ class NewsEncoder(torch.nn.Module):
                 torch.stack(all_vectors, dim=1),
                 dim=1
              )
-        
+
         # batch_size, news_dim
         final_news_vector = self.reduce_dim_linear(final_news_vector)
         return final_news_vector
@@ -380,7 +378,7 @@ class ModelBert(torch.nn.Module):
         score = torch.bmm(news_vec, user_vector.unsqueeze(-1)).squeeze(dim=-1)
         if compute_loss:
             loss = self.criterion(score, targets)
-            return loss
+            return loss, score
         else:
             return score
 
