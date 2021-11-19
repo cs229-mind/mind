@@ -174,7 +174,6 @@ def train(args):
     for ep in range(args.epochs):
         loss = 0.0
         accuary = 0.0
-        count = 0
         for cnt, (log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
             if cnt > args.max_steps_per_epoch:
                 break
@@ -191,17 +190,15 @@ def train(args):
             bz_loss.backward()
             optimizer.step()
 
-            loss += bz_loss.data.float()
-            accuary += utils.acc(targets, y_hat)
-            count = cnt
+            loss += (bz_loss.data.float() - loss) / (cnt + 1)
+            accuary += (utils.acc(targets, y_hat) - accuary) / (cnt + 1)
             if cnt % args.log_steps == 0:
-                LOSS.append(loss.data / cnt)
-                ACC.append(accuary / cnt)
-                print('train_loss: {:.5f}'.format(loss.data))
+                LOSS.append(loss.data)
+                ACC.append(accuary)
                 logging.info(
                     '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
-                        hvd_rank, cnt * args.batch_size, loss.data / cnt,
-                        accuary / cnt))
+                        hvd_rank, cnt * args.batch_size, loss.data,
+                        accuary))
 
             # save model minibatch
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
@@ -220,8 +217,6 @@ def train(args):
                 LOSS, ACC = [], []
                 logging.info(f"Training history saved to {outfile}")
 
-        loss /= count
-        accuary /= count
         logging.info('epoch: {} loss: {} accuracy {}'.format(ep + 1, loss, accuary))
 
         # save model last of epoch
