@@ -187,13 +187,13 @@ def train(args):
 
             bz_loss, y_hat = model(input_ids, log_ids, log_mask, targets)
             # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
-            loss += bz_loss.data.float()
-            accuary += utils.acc(targets, y_hat)
-            count = cnt
             optimizer.zero_grad()
             bz_loss.backward()
             optimizer.step()
 
+            loss += bz_loss.data.float()
+            accuary += utils.acc(targets, y_hat)
+            count = cnt
             if cnt % args.log_steps == 0:
                 LOSS.append(loss.data / cnt)
                 ACC.append(accuary / cnt)
