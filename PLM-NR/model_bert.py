@@ -206,7 +206,7 @@ class NewsEncoder(torch.nn.Module):
         }
 
         assert len(args.news_attributes) > 0
-        text_encoders_candidates = ['title', 'body']
+        text_encoders_candidates = ['title', 'abstract']
 
         self.text_encoders = nn.ModuleDict({
             'title':

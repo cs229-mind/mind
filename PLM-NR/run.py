@@ -13,7 +13,6 @@ import utils
 import os
 import sys
 import csv
-import logging
 import datetime
 import time
 from dataloader import DataLoaderTrain, DataLoaderTest

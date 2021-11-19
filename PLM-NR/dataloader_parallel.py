@@ -305,7 +305,7 @@ class DataLoaderTest(DataLoaderTrain):
                 # context = self._process(batch)
                 context = utils.parallel(self._process, batch)
                 # self.outputs.put(context)
-                # self.aval_count += 1                
+                # self.aval_count += 1
                 # print(f"!!!!!!!!!!!! put end {self.aval_count}")
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()

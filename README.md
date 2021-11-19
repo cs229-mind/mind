@@ -36,9 +36,10 @@ horovodrun -n 3 python3 test.py --check-build
 # RUN
 - for training: horovodrun -n 6 python3 run.py --mode train --batch_size=64
 
-- for evaluation: horovodrun -n 6 python3 run.py --mode test --test_dir 'dev' --batch_size=2024
+- for evaluation: horovodrun -n 6 python3 run.py --mode test --test_dir 'dev' --batch_size=2048
 
-- for prediction: horovodrun -n 6 python3 run.py --mode test --test_dir 'test' --batch_size=2024
+- for prediction: horovodrun -n 6 python3 run.py --mode test --test_dir 'test' --batch_size=2048
+or horovodrun -n 6 python3 run_parallel.py --mode test --test_dir 'test' --batch_size=17408
 
 Debug: while running, command kill -SIGUSR1 your_pid would tell which line of code the thread is running
 
