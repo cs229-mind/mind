@@ -216,7 +216,7 @@ class NewsEncoder(torch.nn.Module):
                         args.drop_rate, args.enable_gpu)
         })
 
-        self.newsname=[name for name in set(args.news_attributes) & set(text_encoders_candidates)]
+        self.newsname=[name for name in sorted(list(set(args.news_attributes) & set(text_encoders_candidates)))]
 
         name2num = {
             "category": category_dict_size + 1,
@@ -228,8 +228,8 @@ class NewsEncoder(torch.nn.Module):
             name: ElementEncoder(name2num[name], 
                                 args.num_attention_heads * 20,
                                  args.enable_gpu)
-            for name in (set(args.news_attributes)
-                         & set(element_encoders_candidates))
+            for name in sorted(list(set(args.news_attributes)
+                         & set(element_encoders_candidates)))
         })
         #if len(args.news_attributes) > 1:
         #    self.final_attention = AdditiveAttention(

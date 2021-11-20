@@ -22,7 +22,7 @@ from model_bert import ModelBert
 from parameters import parse_args
 # from torchsummary import summary
 
-from transformers import AutoTokenizer, AutoModel, AutoConfig
+from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 
 finetuneset={
 'encoder.layer.6.attention.self.query.weight',
@@ -129,7 +129,16 @@ def train(args):
         logging.info(f"Model loaded from {ckpt_path} for incremental training")
 
     lr_scaler = hvd.local_size()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = AdamW(model.parameters(), lr=args.lr)
+    num_training_steps = args.epochs * args.max_steps_per_epoch
+    if args.enable_lr_scheduler:
+        lr_scheduler = get_scheduler(
+            "linear",
+            optimizer=optimizer,
+            num_warmup_steps=args.num_warmup_steps,
+            num_training_steps=num_training_steps
+        )
+
     if args.enable_hvd:
         hvd.broadcast_parameters(model.state_dict(), root_rank=0)
         hvd.broadcast_optimizer_state(optimizer, root_rank=0)
@@ -189,6 +198,8 @@ def train(args):
             optimizer.zero_grad()
             bz_loss.backward()
             optimizer.step()
+            if args.enable_lr_scheduler:
+                lr_scheduler.step()
 
             loss += (bz_loss.data.float() - loss) / (cnt + 1)
             accuary += (utils.acc(targets, y_hat) - accuary) / (cnt + 1)

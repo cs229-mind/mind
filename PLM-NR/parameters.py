@@ -30,7 +30,7 @@ def parse_args():
     )
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
     parser.add_argument("--model_dir", type=str, default='~/mind/PLM-NR/model')
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--npratio", type=int, default=1)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
@@ -43,11 +43,13 @@ def parse_args():
     # model training
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--lr", type=float, default=0.0001)
+    parser.add_argument("--enable_lr_scheduler", type=utils.str2bool, default=True)
+    parser.add_argument("--num_warmup_steps", type=int, default=100)
     parser.add_argument(
         "--news_attributes",
         type=str,
         nargs='+',
-        default=['title', 'abstract', 'category', 'domain', 'subcategory'],
+        default=['title', 'abstract', 'category', 'subcategory'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
     parser.add_argument("--process_uet", type=utils.str2bool, default=False)
     parser.add_argument("--process_bing", type=utils.str2bool, default=False)
@@ -103,7 +105,7 @@ def parse_args():
     parser.add_argument("--user_log_mask", type=utils.str2bool, default=True)
     parser.add_argument("--drop_rate", type=float, default=0.2)
     parser.add_argument("--save_steps", type=int, default=5000)
-    parser.add_argument("--max_steps_per_epoch", type=int, default=200000)
+    parser.add_argument("--max_steps_per_epoch", type=int, default=35000)
 
     parser.add_argument(
         "--load_ckpt_name",
