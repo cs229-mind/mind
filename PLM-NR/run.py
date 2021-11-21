@@ -25,38 +25,38 @@ from parameters import parse_args
 from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 
 finetuneset={
-'encoder.layer.6.attention.self.query.weight',
-'encoder.layer.6.attention.self.query.bias',
-'encoder.layer.6.attention.self.key.weight',
-'encoder.layer.6.attention.self.key.bias',
-'encoder.layer.6.attention.self.value.weight',
-'encoder.layer.6.attention.self.value.bias',
-'encoder.layer.6.attention.output.dense.weight',
-'encoder.layer.6.attention.output.dense.bias',
-'encoder.layer.6.attention.output.LayerNorm.weight',
-'encoder.layer.6.attention.output.LayerNorm.bias',
-'encoder.layer.6.intermediate.dense.weight',
-'encoder.layer.6.intermediate.dense.bias',
-'encoder.layer.6.output.dense.weight',
-'encoder.layer.6.output.dense.bias',
-'encoder.layer.6.output.LayerNorm.weight',
-'encoder.layer.6.output.LayerNorm.bias',
-'encoder.layer.7.attention.self.query.weight',
-'encoder.layer.7.attention.self.query.bias',
-'encoder.layer.7.attention.self.key.weight',
-'encoder.layer.7.attention.self.key.bias',
-'encoder.layer.7.attention.self.value.weight',
-'encoder.layer.7.attention.self.value.bias',
-'encoder.layer.7.attention.output.dense.weight',
-'encoder.layer.7.attention.output.dense.bias',
-'encoder.layer.7.attention.output.LayerNorm.weight',
-'encoder.layer.7.attention.output.LayerNorm.bias',
-'encoder.layer.7.intermediate.dense.weight',
-'encoder.layer.7.intermediate.dense.bias',
-'encoder.layer.7.output.dense.weight',
-'encoder.layer.7.output.dense.bias',
-'encoder.layer.7.output.LayerNorm.weight',
-'encoder.layer.7.output.LayerNorm.bias',
+'encoder.layer.10.attention.self.query.weight',
+'encoder.layer.10.attention.self.query.bias',
+'encoder.layer.10.attention.self.key.weight',
+'encoder.layer.10.attention.self.key.bias',
+'encoder.layer.10.attention.self.value.weight',
+'encoder.layer.10.attention.self.value.bias',
+'encoder.layer.10.attention.output.dense.weight',
+'encoder.layer.10.attention.output.dense.bias',
+'encoder.layer.10.attention.output.LayerNorm.weight',
+'encoder.layer.10.attention.output.LayerNorm.bias',
+'encoder.layer.10.intermediate.dense.weight',
+'encoder.layer.10.intermediate.dense.bias',
+'encoder.layer.10.output.dense.weight',
+'encoder.layer.10.output.dense.bias',
+'encoder.layer.10.output.LayerNorm.weight',
+'encoder.layer.10.output.LayerNorm.bias',
+'encoder.layer.11.attention.self.query.weight',
+'encoder.layer.11.attention.self.query.bias',
+'encoder.layer.11.attention.self.key.weight',
+'encoder.layer.11.attention.self.key.bias',
+'encoder.layer.11.attention.self.value.weight',
+'encoder.layer.11.attention.self.value.bias',
+'encoder.layer.11.attention.output.dense.weight',
+'encoder.layer.11.attention.output.dense.bias',
+'encoder.layer.11.attention.output.LayerNorm.weight',
+'encoder.layer.11.attention.output.LayerNorm.bias',
+'encoder.layer.11.intermediate.dense.weight',
+'encoder.layer.11.intermediate.dense.bias',
+'encoder.layer.11.output.dense.weight',
+'encoder.layer.11.output.dense.bias',
+'encoder.layer.11.output.LayerNorm.weight',
+'encoder.layer.11.output.LayerNorm.bias',
 'pooler.dense.weight',
 'pooler.dense.bias',
 'rel_pos_bias.weight',
@@ -129,7 +129,13 @@ def train(args):
         logging.info(f"Model loaded from {ckpt_path} for incremental training")
 
     lr_scaler = hvd.local_size()
-    optimizer = AdamW(model.parameters(), lr=args.lr)
+    if args.optimizer == 'Adam':
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    elif args.optimizer == 'AdamW':
+        optimizer = AdamW(model.parameters(), lr=args.lr)
+    else:
+        optimizer = AdamW(model.parameters(), lr=args.lr)
+
     num_training_steps = args.epochs * args.max_steps_per_epoch
     if args.enable_lr_scheduler:
         lr_scheduler = get_scheduler(
@@ -182,7 +188,7 @@ def train(args):
     LOSS, ACC = [], []
     for ep in range(args.epochs):
         loss = 0.0
-        accuary = 0.0
+        accuracy = 0.0
         for cnt, (log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
             if cnt > args.max_steps_per_epoch:
                 break
@@ -202,19 +208,19 @@ def train(args):
                 lr_scheduler.step()
 
             loss += (bz_loss.data.float() - loss) / (cnt + 1)
-            accuary += (utils.acc(targets, y_hat) - accuary) / (cnt + 1)
+            accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
             if cnt % args.log_steps == 0:
                 LOSS.append(loss.data)
-                ACC.append(accuary)
+                ACC.append(accuracy)
                 logging.info(
                     '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
                         hvd_rank, cnt * args.batch_size, loss.data,
-                        accuary))
+                        accuracy))
 
             # save model minibatch
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
             if hvd_rank == 0 and cnt % args.save_steps == 0:
-                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}.pt')
+                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss}-{accuracy}.pt')
                 torch.save(
                     {
                         'model_state_dict': model.state_dict(),
@@ -228,7 +234,7 @@ def train(args):
                 LOSS, ACC = [], []
                 logging.info(f"Training history saved to {outfile}")
 
-        logging.info('epoch: {} loss: {} accuracy {}'.format(ep + 1, loss, accuary))
+        logging.info('epoch: {} loss: {} accuracy {}'.format(ep + 1, loss, accuracy))
 
         # save model last of epoch
         if hvd_rank == 0:
@@ -374,7 +380,7 @@ def test(args):
 
     AUC, MRR, nDCG5, nDCG10, SCORE = [], [], [], [], []
     count = 0
-    outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
+    outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
 
     def print_metrics(hvd_local_rank, cnt, x):
         logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \

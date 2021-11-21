@@ -34,9 +34,9 @@ def save_txt(input_files_glob, outfile):
 
 if __name__ == "__main__":
     utils.setuplogger()
-    scoring_output_files = '202111181*' # !!!change this to the files generated from the scoring run!!!
+    scoring_output_files = args.scoring_output # !!!change this to the files generated from the scoring run!!!
 
-    input_files_glob = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}.tsv".format(scoring_output_files))    
+    input_files_glob = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}".format(scoring_output_files))    
     outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}.txt".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
 
     logging.info(f"start processing scoring output files: {input_files_glob}")

@@ -414,11 +414,12 @@ def test(args):
         score[1] = (ranks + 1).tolist()
 
     # save the prediction result
-    outfile = os.path.join("./model", "prediction_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
+    outfile = os.path.join("./model", "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def write_tsv(score):
         with open(outfile, 'wt') as out_file:
             tsv_writer = csv.writer(out_file, delimiter='\t')
             tsv_writer.writerows(score)
+        logging.info(f"Saved scoring to {outfile}")
     write_tsv(SCORE)
 
     logging.info(f"Time taken: {time.time() - start_time}")

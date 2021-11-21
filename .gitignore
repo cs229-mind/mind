@@ -9,3 +9,5 @@
 **/bert-base-uncased
 **/*.pyc
 **/*.pyo
+**/unilm-large-cased
+**/MiniLM-L12-H384-uncased

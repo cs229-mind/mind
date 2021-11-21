@@ -309,7 +309,7 @@ class UserEncoder(torch.nn.Module):
                                  mask if use_mask else None)
         return vec
 
-    
+
     def forward(self, log_vec, log_mask):
         """
         Returns:
