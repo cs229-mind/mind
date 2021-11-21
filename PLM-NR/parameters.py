@@ -45,13 +45,15 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--optimizer", type=str, default='AdamW', choices=['Adam', 'AdamW'])
     parser.add_argument("--lr", type=float, default=5e-5)
+    parser.add_argument("--weight_decay", type=float, default=1e-5)
+    parser.add_argument("--correct_bias", type=utils.str2bool, default=True)
     parser.add_argument("--enable_lr_scheduler", type=utils.str2bool, default=True)
     parser.add_argument("--num_warmup_steps", type=int, default=500)
     parser.add_argument(
         "--news_attributes",
         type=str,
         nargs='+',
-        default=['title'],
+        default=['title', 'abstract', 'category'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
     parser.add_argument("--process_uet", type=utils.str2bool, default=False)
     parser.add_argument("--process_bing", type=utils.str2bool, default=False)

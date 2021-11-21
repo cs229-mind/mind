@@ -231,13 +231,11 @@ class NewsEncoder(torch.nn.Module):
             for name in sorted(list(set(args.news_attributes)
                          & set(element_encoders_candidates)))
         })
-        #if len(args.news_attributes) > 1:
-        #    self.final_attention = AdditiveAttention(
-        #        args.num_attention_heads * 20, args.news_query_vector_dim)
-
+        if len(args.news_attributes) > 1:
+            self.final_attention = AdditiveAttention(
+                args.num_attention_heads * 20, args.news_query_vector_dim)
         self.reduce_dim_linear = nn.Linear(args.num_attention_heads * 20,
-                                           args.news_dim)
-
+                                        args.news_dim)
         if args.use_pretrain_news_encoder:
             self.reduce_dim_linear.load_state_dict(
                 torch.load(os.path.join(os.path.expanduser(args.pretrain_news_encoder_path), 
@@ -268,11 +266,11 @@ class NewsEncoder(torch.nn.Module):
         if len(all_vectors) == 1:
             final_news_vector = all_vectors[0]
         else:
-
-            final_news_vector = torch.mean(
-                torch.stack(all_vectors, dim=1),
-                dim=1
-             )
+            final_news_vector = self.final_attention(torch.stack(all_vectors, dim=1))
+            # final_news_vector = torch.mean(
+            #     torch.stack(all_vectors, dim=1),
+            #     dim=1
+            #  )
 
         # batch_size, news_dim
         final_news_vector = self.reduce_dim_linear(final_news_vector)

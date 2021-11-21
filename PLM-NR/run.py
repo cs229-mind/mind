@@ -132,7 +132,7 @@ def train(args):
     if args.optimizer == 'Adam':
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
     elif args.optimizer == 'AdamW':
-        optimizer = AdamW(model.parameters(), lr=args.lr)
+        optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, correct_bias=args.correct_bias)
     else:
         optimizer = AdamW(model.parameters(), lr=args.lr)
 
