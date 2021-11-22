@@ -54,7 +54,7 @@ elif [ ${mode} == test ]
 then
     batch_size=32
     log_steps=100
-    load_ckpt_name=${11}
+    load_ckpt_test=${11}
     CUDA_LAUNCH_BLOCKING=1 python run.py --root_data_dir ${root_data_dir} \
     --mode ${mode} --epoch ${epoch} --dataset ${dataset} \
     --model_dir ${model_dir}  --batch_size ${batch_size} \
@@ -63,5 +63,5 @@ then
     --user_log_mask ${user_log_mask} --use_padded_news_embedding ${use_padded_news_embedding} \
     --train_dir ${train_dir} --test_dir ${test_dir} --save_steps ${save_steps} \
     --log_steps ${log_steps} --num_attention_heads ${num_attention_heads} \
-    --load_ckpt_name ${load_ckpt_name}
+    --load_ckpt_test ${load_ckpt_test}
 fi

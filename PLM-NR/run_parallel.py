@@ -32,9 +32,9 @@ def test(args):
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
 
-    if args.load_ckpt_name is not None:
+    if args.load_ckpt_test is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_name)
+        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_test)
     else:
         ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 

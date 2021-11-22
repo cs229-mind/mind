@@ -119,9 +119,16 @@ def parse_args():
     parser.add_argument("--max_steps_per_epoch", type=int, default=35000)
 
     parser.add_argument(
-        "--load_ckpt_name",
+        "--load_ckpt_train",
         type=str,
-        default="newest.pt",
+        default=None,  # means to take latest trained model
+        help="choose which ckpt to load and train"
+    )
+
+    parser.add_argument(
+        "--load_ckpt_test",
+        type=str,
+        default=None,  # means to take latest trained model
         help="choose which ckpt to load and test"
     )
     # share

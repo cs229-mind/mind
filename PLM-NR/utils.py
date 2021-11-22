@@ -116,17 +116,21 @@ def load_matrix(embedding_file_path, word_dict, word_embedding_dim):
 def latest_checkpoint(directory):
     if not os.path.exists(directory):
         return None
-    print(os.listdir(directory))
+    logging.info(f'finding latest_checkpoint in directory {directory} :')        
+    logging.info(os.listdir(directory))
     if len(os.listdir(directory))==0:
         return None
-    all_checkpoints = {
-        int(x.split('.')[-2].split('-')[-1]): x
-        for x in os.listdir(directory)
-    }
-    if not all_checkpoints:
+
+    def sorted_ls(directory):
+        mtime = lambda f: os.stat(os.path.join(directory, f)).st_mtime
+        return list(sorted(os.listdir(directory), key=mtime))
+
+    all_files = sorted_ls(directory)
+    all_checkpoints = [file_name for file_name in all_files if 'epoch' in file_name]
+    if len(all_checkpoints) == 0:
         return None
-    return os.path.join(directory,
-                        all_checkpoints[max(all_checkpoints.keys())])
+    logging.info(f'found latest_checkpoint in directory {directory} : {all_checkpoints[-1]}')
+    return os.path.join(directory, all_checkpoints[-1])
 
 
 def get_checkpoint(directory, ckpt_name):
