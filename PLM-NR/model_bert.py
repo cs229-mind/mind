@@ -278,9 +278,10 @@ class NewsEncoder(torch.nn.Module):
 
 
 class UserEncoder(torch.nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, user_dict_size):
         super(UserEncoder, self).__init__()
         self.args = args
+        self.user_dict_size = user_dict_size
         self.news_additive_attention = AdditiveAttention(
             args.news_dim, args.user_query_vector_dim)
         if args.use_padded_news_embedding:
@@ -290,6 +291,25 @@ class UserEncoder(torch.nn.Module):
             # self.news_padded_news_embedding = None
             self.pad_doc = None
 
+        assert len(args.user_attributes) > 0
+        news_encoders_candidates = ['click_docs']
+        self.user_news_history=[name for name in sorted(list(set(args.user_attributes) & set(news_encoders_candidates)))]
+        name2num = {
+            "user_id": user_dict_size + 1
+        }
+
+        element_encoders_candidates = ['user_id']
+        self.element_encoders = nn.ModuleDict({
+            name: ElementEncoder(name2num[name], 
+                                args.news_dim,
+                                 args.enable_gpu)
+            for name in sorted(list(set(args.user_attributes)
+                         & set(element_encoders_candidates)))
+        })
+
+        if len(args.user_attributes) > 1:
+            self.final_attention = AdditiveAttention(
+                args.news_dim, args.user_query_vector_dim)
 
     def _process_news(self, vec, mask, pad_doc,
                     additive_attention, use_mask=False, 
@@ -308,20 +328,33 @@ class UserEncoder(torch.nn.Module):
         return vec
 
 
-    def forward(self, log_vec, log_mask):
+    def forward(self, user_ids, log_vec, log_mask):
         """
         Returns:
             (shape) batch_size,  news_dim
         """
-        # batch_size, news_dim
-        log_vec = self._process_news(log_vec, log_mask, self.pad_doc,
-                                     self.news_additive_attention, self.args.user_log_mask,
-                                     self.args.use_padded_news_embedding)
-        
-        user_log_vecs = log_vec
+        user_log_vecs = []
+        if 'click_docs' in self.user_news_history:
+            # batch_size, news_dim
+            log_vec = self._process_news(log_vec, log_mask, self.pad_doc,
+                                        self.news_additive_attention, self.args.user_log_mask,
+                                        self.args.use_padded_news_embedding)
+            user_log_vecs.append(log_vec)
 
+        element_vectors = []
+        if 'user_id' in self.element_encoders:
+            element_vectors.append(self.element_encoders['user_id'](user_ids.squeeze(dim=1)))
 
-        return user_log_vecs
+        all_vectors = user_log_vecs + element_vectors
+        if len(all_vectors) == 1:
+            final_user_vector = all_vectors[0]
+        else:
+            final_user_vector = self.final_attention(torch.stack(all_vectors, dim=1))
+            # final_user_vector = torch.mean(
+            #     torch.stack(all_vectors, dim=1),
+            #     dim=1
+            #  )
+        return final_user_vector
 
 
 class ModelBert(torch.nn.Module):
@@ -332,6 +365,7 @@ class ModelBert(torch.nn.Module):
     def __init__(self,
                  args,
                  bert_model,
+                 user_dict_size=0,
                  category_dict_size=0,
                  domain_dict_size=0,
                  subcategory_dict_size=0):
@@ -344,12 +378,13 @@ class ModelBert(torch.nn.Module):
                                         category_dict_size, 
                                         domain_dict_size,
                                         subcategory_dict_size)
-        self.user_encoder = UserEncoder(args)
+        self.user_encoder = UserEncoder(args, user_dict_size)
 
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self,
                 input_ids,
+                user_ids,
                 log_ids,
                 log_mask,
                 targets=None,
@@ -370,7 +405,7 @@ class ModelBert(torch.nn.Module):
         log_vec = log_vec.view(-1, self.args.user_log_length,
                                self.args.news_dim)
 
-        user_vector = self.user_encoder(log_vec, log_mask)
+        user_vector = self.user_encoder(user_ids, log_vec, log_mask)
 
         # batch_size, 2
         score = torch.bmm(news_vec, user_vector.unsqueeze(-1)).squeeze(dim=-1)

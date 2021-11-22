@@ -20,186 +20,7 @@ from model_bert import ModelBert
 from parameters import parse_args
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig
-
-finetuneset={
-'encoder.layer.6.attention.self.query.weight',
-'encoder.layer.6.attention.self.query.bias',
-'encoder.layer.6.attention.self.key.weight',
-'encoder.layer.6.attention.self.key.bias',
-'encoder.layer.6.attention.self.value.weight',
-'encoder.layer.6.attention.self.value.bias',
-'encoder.layer.6.attention.output.dense.weight',
-'encoder.layer.6.attention.output.dense.bias',
-'encoder.layer.6.attention.output.LayerNorm.weight',
-'encoder.layer.6.attention.output.LayerNorm.bias',
-'encoder.layer.6.intermediate.dense.weight',
-'encoder.layer.6.intermediate.dense.bias',
-'encoder.layer.6.output.dense.weight',
-'encoder.layer.6.output.dense.bias',
-'encoder.layer.6.output.LayerNorm.weight',
-'encoder.layer.6.output.LayerNorm.bias',
-'encoder.layer.7.attention.self.query.weight',
-'encoder.layer.7.attention.self.query.bias',
-'encoder.layer.7.attention.self.key.weight',
-'encoder.layer.7.attention.self.key.bias',
-'encoder.layer.7.attention.self.value.weight',
-'encoder.layer.7.attention.self.value.bias',
-'encoder.layer.7.attention.output.dense.weight',
-'encoder.layer.7.attention.output.dense.bias',
-'encoder.layer.7.attention.output.LayerNorm.weight',
-'encoder.layer.7.attention.output.LayerNorm.bias',
-'encoder.layer.7.intermediate.dense.weight',
-'encoder.layer.7.intermediate.dense.bias',
-'encoder.layer.7.output.dense.weight',
-'encoder.layer.7.output.dense.bias',
-'encoder.layer.7.output.LayerNorm.weight',
-'encoder.layer.7.output.LayerNorm.bias',
-'pooler.dense.weight',
-'pooler.dense.bias',
-'rel_pos_bias.weight',
-'classifier.weight',
-'classifier.bias'}
-def train(args):
-    # Only support title Turing now
-    assert args.enable_hvd  # TODO
-    if args.enable_hvd:
-        import horovod.torch as hvd
-
-    if args.load_ckpt_name is not None:
-        #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_name)
-    else:
-        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
-
-
-    hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
-        args.enable_hvd, args.enable_gpu)
-
-    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
-    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
-    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
-
-    #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
-    # freeze parameters
-    for name,param in bert_model.named_parameters():
-        if name not in finetuneset:
-            param.requires_grad = False
-
-    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.train_dir}/news.tsv'), 
-        args,
-        tokenizer
-    )
-
-    news_title, news_title_type, news_title_attmask, \
-    news_abstract, news_abstract_type, news_abstract_attmask, \
-    news_body, news_body_type, news_body_attmask, \
-    news_category, news_domain, news_subcategory = get_doc_input_bert(
-        news, news_index, category_dict, domain_dict, subcategory_dict, args)
-    
-    news_combined = np.concatenate([
-        x for x in
-        [news_title, news_title_type, news_title_attmask, \
-            news_abstract, news_abstract_type, news_abstract_attmask, \
-            news_body, news_body_type, news_body_attmask, \
-            news_category, news_domain, news_subcategory]
-        if x is not None], axis=1)
-    
-    model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
-    word_dict = None
-    
-    if args.enable_gpu:
-        model = model.cuda()
-
-    lr_scaler = hvd.local_size()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    if args.enable_hvd:
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-        compression = hvd.Compression.none
-        optimizer = hvd.DistributedOptimizer(
-            optimizer,
-            named_parameters=model.named_parameters(),
-            compression=compression,
-            op=hvd.Average)
-
-
-    dataloader = DataLoaderTrain(
-        news_index=news_index,
-        news_combined=news_combined,
-        word_dict=word_dict,
-        data_dir=os.path.join(os.path.expanduser(args.root_data_dir),
-                            f'{args.dataset}/{args.train_dir}'),
-        filename_pat=args.filename_pat,
-        args=args,
-        worker_size=hvd_size,
-        worker_rank=hvd_rank,
-        cuda_device_idx=hvd_local_rank,
-        enable_prefetch=True,
-        enable_shuffle=True,
-        enable_gpu=args.enable_gpu,
-    )
-
-    logging.info('Training...')
-    for ep in range(args.epochs):
-        loss = 0.0
-        accuary = 0.0
-        for cnt, (log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
-            if cnt > args.max_steps_per_epoch:
-                break
-
-            if args.enable_gpu:
-                log_ids = log_ids.cuda(non_blocking=True)
-                log_mask = log_mask.cuda(non_blocking=True)
-                input_ids = input_ids.cuda(non_blocking=True)
-                targets = targets.cuda(non_blocking=True)
-
-            bz_loss, y_hat = model(input_ids, log_ids, log_mask, targets)
-            loss += bz_loss.data.float()
-            accuary += utils.acc(targets, y_hat)
-            optimizer.zero_grad()
-            bz_loss.backward()
-            optimizer.step()
-
-            if cnt % args.log_steps == 0:
-                logging.info(
-                    '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
-                        hvd_rank, cnt * args.batch_size, loss.data / cnt,
-                        accuary / cnt))
-
-            # save model minibatch
-            print(hvd_rank,cnt,args.save_steps,cnt%args.save_steps)
-            if hvd_rank == 0 and cnt % args.save_steps == 0:
-                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}.pt')
-                torch.save(
-                    {
-                        'model_state_dict': model.state_dict(),
-                        'category_dict': category_dict,
-                        'word_dict': word_dict,
-                        'domain_dict': domain_dict,
-                        'subcategory_dict': subcategory_dict
-                    }, ckpt_path)
-                logging.info(f"Model saved to {ckpt_path}")
-
-        loss /= cnt
-        print(ep + 1, loss)
-
-        # save model last of epoch
-        if hvd_rank == 0:
-            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}.pt')
-            torch.save(
-                {
-                    'model_state_dict': model.state_dict(),
-                    'category_dict': category_dict,
-                    'word_dict': word_dict,
-                    'domain_dict': domain_dict,
-                    'subcategory_dict': subcategory_dict
-                }, ckpt_path)
-            logging.info(f"Model saved to {ckpt_path}")
-
-    dataloader.join()
+from run import train
 
 
 def test(args):
@@ -231,12 +52,13 @@ def test(args):
     category_dict = checkpoint['category_dict']
     word_dict = checkpoint['word_dict']
     domain_dict = checkpoint['domain_dict']
-    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
+    user_dict = checkpoint['user_dict']
+    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name e.g. "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
-    model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
-    
+    model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
+
     if args.enable_gpu:
         model.cuda()
 
@@ -308,6 +130,7 @@ def test(args):
     dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_scoring,
+        user_dict=user_dict,
         word_dict=word_dict,
         news_bias_scoring= None,
         data_dir=os.path.join(os.path.expanduser(args.root_data_dir),
@@ -338,27 +161,30 @@ def test(args):
         return [np.array(i).mean() for i in arr]
 
     def score_func(model, batch):
-        log_vecs, log_mask, impression_ids, news_vecs, news_bias, labels = [], [], [], [], [], []
-        for (impression_id, log_vec, mask, news_vec, bias, label) in batch:
-            impression_ids.append(impression_id)                
+        user_ids, log_vecs, log_mask, impression_ids, news_vecs, news_bias, labels = [], [], [], [], [], [], []
+        for (impression_id, user_id, log_vec, mask, news_vec, bias, label) in batch:
+            impression_ids.append(impression_id)
+            user_ids.append(user_id)
             log_vecs.append(log_vec)
             log_mask.append(mask)
             news_vecs.append(news_vec)
             news_bias.append(bias)
             labels.append(label)
         if args.enable_gpu:
+            user_ids = torch.LongTensor(user_ids).cuda()
             log_vecs = torch.FloatTensor(log_vecs).cuda()
             log_mask = torch.FloatTensor(log_mask).cuda()
         else:
+            user_ids = torch.LongTensor(user_ids)
             log_vecs = torch.FloatTensor(log_vecs)
             log_mask = torch.FloatTensor(log_mask)
 
         if args.enable_gpu:
+            user_ids = user_ids.cuda(non_blocking=True)
             log_vecs = log_vecs.cuda(non_blocking=True)
             log_mask = log_mask.cuda(non_blocking=True)
 
-        user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
-        # scores = np.dot(news_vec, user_vec)
+        user_vecs = model.user_encoder(user_ids, log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 
         scores = []
         for impression_id, user_vec, news_vec, bias, label in zip(

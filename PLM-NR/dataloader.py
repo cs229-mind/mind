@@ -28,6 +28,7 @@ class DataLoaderTrain(IterableDataset):
                  worker_rank,
                  cuda_device_idx,
                  news_index,
+                 user_dict,
                  news_combined,
                  word_dict,
                  enable_prefetch=True,
@@ -38,6 +39,7 @@ class DataLoaderTrain(IterableDataset):
 
         self.npratio = args.npratio
         self.user_log_length = args.user_log_length
+        self.user_attributes = args.user_attributes
         self.batch_size = args.batch_size
 
         self.worker_rank = worker_rank
@@ -55,6 +57,7 @@ class DataLoaderTrain(IterableDataset):
 
         self.news_combined = news_combined
         self.news_index = news_index
+        self.user_dict = user_dict
         self.word_dict = word_dict
 
     def start(self):
@@ -73,6 +76,9 @@ class DataLoaderTrain(IterableDataset):
 
     def trans_to_nindex(self, nids):
         return [self.news_index[i] if i in self.news_index else 0 for i in nids]
+
+    def trans_to_uindex(self, uids):
+        return [self.user_dict[i] if i in self.user_dict else 0 for i in uids]
 
     def pad_to_fix_len(self, x, fix_length, padding_front=True, padding_value=0):
         if padding_front:
@@ -146,9 +152,12 @@ class DataLoaderTrain(IterableDataset):
         batch_poss = [x.numpy().decode(encoding="utf-8") for x in batch_poss]
         batch = [x.numpy().decode(encoding="utf-8").split("\t") for x in batch]
         label = 0
-        user_feature_batch, log_mask_batch, news_feature_batch, label_batch = [], [], [], []
+        user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, label_batch = [], [], [], [], []
 
         for poss, line in zip(batch_poss, batch):
+            user_id = line[1]
+            user_id = self.trans_to_uindex([user_id])
+
             click_docs = line[3].split()
 
             click_docs, log_mask = self.pad_to_fix_len(self.trans_to_nindex(click_docs),
@@ -171,23 +180,26 @@ class DataLoaderTrain(IterableDataset):
             sample_news = poss + sam_negs
 
             news_feature = self.news_combined[sample_news]
+            user_id_batch.append(user_id)
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
             news_feature_batch.append(news_feature)
             label_batch.append(label)
 
         if self.enable_gpu:
+            user_id_batch = torch.LongTensor(user_id_batch).cuda()
             user_feature_batch = torch.LongTensor(user_feature_batch).cuda()
             log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
             news_feature_batch = torch.LongTensor(news_feature_batch).cuda()
             label_batch = torch.LongTensor(label_batch).cuda()
         else:
+            user_id_batch = torch.LongTensor(user_id_batch)
             user_feature_batch = torch.LongTensor(user_feature_batch)
             log_mask_batch = torch.FloatTensor(log_mask_batch)
             news_feature_batch = torch.LongTensor(news_feature_batch)
             label_batch = torch.LongTensor(label_batch)
 
-        return user_feature_batch, log_mask_batch, news_feature_batch, label_batch
+        return user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, label_batch
 
     def __iter__(self):
         """Implement IterableDataset method to provide data iterator."""
@@ -203,8 +215,9 @@ class DataLoaderTrain(IterableDataset):
         if self.sampler and self.sampler.reach_end() and self.aval_count == 0:
             raise StopIteration
         if self.enable_prefetch:
-            # print(f"!!!!!!!!!!!! get {self.aval_count}")
+            # print(f"!!!!!!!!!!!! get start {self.aval_count}")
             next_batch = self.outputs.get()
+            # print(f"!!!!!!!!!!!! get end {self.aval_count}")
             # print(f"!!!!!!!!!!!! get {next_batch}")
             self.outputs.task_done()
             self.aval_count -= 1
@@ -237,6 +250,7 @@ class DataLoaderTest(DataLoaderTrain):
                  worker_rank,
                  cuda_device_idx,
                  news_index,
+                 user_dict,
                  news_scoring,
                  word_dict,
                  news_bias_scoring=None,
@@ -264,6 +278,7 @@ class DataLoaderTest(DataLoaderTrain):
         self.news_scoring = news_scoring
         self.news_bias_scoring = news_bias_scoring
         self.news_index = news_index
+        self.user_dict = user_dict
         self.word_dict = word_dict
 
     def start_async(self):
@@ -328,10 +343,13 @@ class DataLoaderTest(DataLoaderTrain):
         batch_size = len(batch)
         batch = [x.numpy().decode(encoding="utf-8").split("\t") for x in batch]
 
-        impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch = [], [], [], [], [], []
+        impression_id_batch, user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch = [], [], [], [], [], [], []
 
         for line in batch:
             impression_id = line[0]
+
+            user_id = line[1]
+            user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -351,6 +369,7 @@ class DataLoaderTest(DataLoaderTrain):
                 news_bias = [0] * len(sample_news)
 
             impression_id_batch.append(impression_id)
+            user_id_batch.append(user_id)
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
             news_feature_batch.append(news_feature)
@@ -358,11 +377,13 @@ class DataLoaderTest(DataLoaderTrain):
             label_batch.append(np.array(labels))
 
         if self.enable_gpu:
+            user_id_batch = torch.LongTensor(user_id_batch).cuda()
             user_feature_batch = torch.FloatTensor(user_feature_batch).cuda()
             log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
         else:
+            user_id_batch = torch.LongTensor(user_id_batch)
             user_feature_batch = torch.FloatTensor(user_feature_batch)
             log_mask_batch = torch.FloatTensor(log_mask_batch)
 
-        return impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
+        return impression_id_batch, user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
 

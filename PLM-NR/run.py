@@ -17,7 +17,7 @@ import datetime
 import time
 from dataloader import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
-from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
+from preprocess import read_news, read_user, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
 from parameters import parse_args
 # from torchsummary import summary
@@ -88,6 +88,13 @@ def train(args):
         if name not in finetuneset:
             param.requires_grad = False
 
+    user_dict = read_user(
+        os.path.join(os.path.expanduser(args.root_data_dir),
+                    f'{args.dataset}/{args.train_dir}/'),
+        args.filename_pat,
+        args
+    )
+
     news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
         os.path.join(os.path.expanduser(args.root_data_dir),
                     f'{args.dataset}/{args.train_dir}/news.tsv'), 
@@ -109,7 +116,7 @@ def train(args):
             news_category, news_domain, news_subcategory]
         if x is not None], axis=1)
 
-    model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
+    model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
     word_dict = None
 
     if args.enable_gpu:
@@ -121,6 +128,7 @@ def train(args):
             checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
         else:
             checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        user_dict = checkpoint['user_dict']
         category_dict = checkpoint['category_dict']
         subcategory_dict = checkpoint['subcategory_dict']
         word_dict = checkpoint['word_dict']
@@ -159,6 +167,7 @@ def train(args):
     dataloader = DataLoaderTrain(
         news_index=news_index,
         news_combined=news_combined,
+        user_dict=user_dict,
         word_dict=word_dict,
         data_dir=os.path.join(os.path.expanduser(args.root_data_dir),
                             f'{args.dataset}/{args.train_dir}'),
@@ -176,7 +185,7 @@ def train(args):
 
     def write_history(LOSS, ACC, outfile):
         # format the data: loss, acc
-        data = [(float(loss), float(acc)) for score, acc in zip(LOSS, ACC)]
+        data = [(round(float(loss), 5), round(float(acc), 5)) for score, acc in zip(LOSS, ACC)]
         # save the prediction result
         def write_tsv(data):
             with open(outfile, 'a') as out_file:
@@ -189,7 +198,7 @@ def train(args):
     for ep in range(args.epochs):
         loss = 0.0
         accuracy = 0.0
-        for cnt, (log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
+        for cnt, (user_ids, log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
             if cnt > args.max_steps_per_epoch:
                 break
 
@@ -197,9 +206,10 @@ def train(args):
                 log_ids = log_ids.cuda(non_blocking=True)
                 log_mask = log_mask.cuda(non_blocking=True)
                 input_ids = input_ids.cuda(non_blocking=True)
+                user_ids = user_ids.cuda(non_blocking=True)
                 targets = targets.cuda(non_blocking=True)
 
-            bz_loss, y_hat = model(input_ids, log_ids, log_mask, targets)
+            bz_loss, y_hat = model(input_ids, user_ids, log_ids, log_mask, targets)
             # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
             optimizer.zero_grad()
             bz_loss.backward()
@@ -220,10 +230,11 @@ def train(args):
             # save model minibatch
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
             if hvd_rank == 0 and cnt % args.save_steps == 0:
-                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss}-{accuracy}.pt')
+                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
                 torch.save(
                     {
                         'model_state_dict': model.state_dict(),
+                        'user_dict': user_dict,                        
                         'category_dict': category_dict,
                         'word_dict': word_dict,
                         'domain_dict': domain_dict,
@@ -234,7 +245,7 @@ def train(args):
                 LOSS, ACC = [], []
                 logging.info(f"Training history saved to {outfile}")
 
-        logging.info('epoch: {} loss: {} accuracy {}'.format(ep + 1, loss, accuracy))
+        logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
 
         # save model last of epoch
         if hvd_rank == 0:
@@ -286,11 +297,12 @@ def test(args):
     category_dict = checkpoint['category_dict']
     word_dict = checkpoint['word_dict']
     domain_dict = checkpoint['domain_dict']
+    user_dict = checkpoint['user_dict']
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
-    model = ModelBert(args, bert_model, len(category_dict), len(domain_dict), len(subcategory_dict))
+    model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
 
     if args.enable_gpu:
         model.cuda()
@@ -362,6 +374,7 @@ def test(args):
     dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_scoring,
+        user_dict=user_dict,
         word_dict=word_dict,
         news_bias_scoring= None,
         data_dir=os.path.join(os.path.expanduser(args.root_data_dir),
@@ -405,15 +418,16 @@ def test(args):
         write_tsv(SCORE)
 
     with torch.no_grad():
-        for cnt, (impression_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
+        for cnt, (impression_ids, user_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
             # logging.info(f"start new batch {cnt}")
             count = cnt
 
             if args.enable_gpu:
+                user_ids = user_ids.cuda(non_blocking=True)
                 log_vecs = log_vecs.cuda(non_blocking=True)
                 log_mask = log_mask.cuda(non_blocking=True)
 
-            user_vecs = model.user_encoder(log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+            user_vecs = model.user_encoder(user_ids, log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 
             for impression_id, user_vec, news_vec, bias, label in zip(
                     impression_ids, user_vecs, news_vecs, news_bias, labels):

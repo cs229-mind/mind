@@ -32,7 +32,7 @@ use_padded_news_embedding=False
 save_steps=2000
 lr=0.00001
 max_steps_per_epoch=120000
-filter_num=1
+filter_num_word=1
 mask_uet_bing_rate=0.8
 npratio=4
 
@@ -48,7 +48,7 @@ then
     --padded_news_different_word_index ${padded_news_different_word_index} \
     --user_log_mask ${user_log_mask} --use_padded_news_embedding ${use_padded_news_embedding} \
     --train_dir ${train_dir} --test_dir ${test_dir} --save_steps ${save_steps} \
-    --filter_num ${filter_num} --max_steps_per_epoch ${max_steps_per_epoch} \
+    --filter_num_word ${filter_num_word} --max_steps_per_epoch ${max_steps_per_epoch} \
     --npratio ${npratio}  --num_attention_heads ${num_attention_heads}
 elif [ ${mode} == test ]
 then

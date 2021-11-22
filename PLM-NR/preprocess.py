@@ -4,12 +4,35 @@ import tensorflow as tf
 from tqdm import tqdm
 import numpy as np
 import re
-from utils import word_tokenize
+from utils import word_tokenize, parallel
+from streaming import get_files
 
 
 def get_domain(url):
     domain = urlparse(url).netloc
     return domain
+
+
+def read_user(dirname, filename_pat, args):
+    user_dict = {}
+    user_cnt = Counter()
+
+    all_files = get_files(dirname, filename_pat)
+    def get_users(all_files):
+        user_ids = []
+        for user_path in all_files:
+            with tf.io.gfile.GFile(user_path, "r") as f:
+                for line in tqdm(f):
+                    splited = line.strip('\n').split('\t')
+                    impression_id, user_id, time, click_docs, impressed_news = splited
+                    user_ids.append(user_id)
+        return user_ids
+    user_ids = parallel(get_users, all_files)
+    user_cnt.update(user_ids)
+    user = [k for k, v in user_cnt.items() if v > args.filter_num_user]
+    user_dict = {k: v for k, v in zip(user, range(1, len(user) + 1))}                
+    return user_dict
+
 
 def read_news_bert(news_path, args, tokenizer, mode='train'):
     news = {}
@@ -150,7 +173,7 @@ def read_news(news_path, args, mode='train'):
                 word_cnt.update(title + abstract + body)
 
     if mode == 'train':
-        word = [k for k, v in word_cnt.items() if v > args.filter_num]
+        word = [k for k, v in word_cnt.items() if v > args.filter_num_word]
         word_dict = {k: v for k, v in zip(word, range(1, len(word) + 1))}
         categories = list(set(categories))
         category_dict = {}

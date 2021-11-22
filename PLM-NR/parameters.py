@@ -7,7 +7,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",
                         type=str,
-                        default="train",
+                        default="test",
                         choices=['train', 'test', 'train_test'])
     parser.add_argument(
         "--root_data_dir",
@@ -31,14 +31,15 @@ def parse_args():
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
     parser.add_argument("--scoring_output", type=str, default="202111210537*.tsv")
     parser.add_argument("--model_dir", type=str, default='~/mind/PLM-NR/model')
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--npratio", type=int, default=4)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
     parser.add_argument("--enable_incremental", type=utils.str2bool, default=False)
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=6)
-    parser.add_argument("--filter_num", type=int, default=1)
+    parser.add_argument("--filter_num_user", type=int, default=0)
+    parser.add_argument("--filter_num_word", type=int, default=1)
     parser.add_argument("--log_steps", type=int, default=100)
 
     # model training
@@ -55,6 +56,12 @@ def parse_args():
         nargs='+',
         default=['title', 'abstract', 'category'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
+    parser.add_argument(
+        "--user_attributes",
+        type=str,
+        nargs='+',
+        default=['click_docs', 'user_id'],
+        choices=['click_docs', 'user_id'])
     parser.add_argument("--process_uet", type=utils.str2bool, default=False)
     parser.add_argument("--process_bing", type=utils.str2bool, default=False)
     parser.add_argument("--num_words_title", type=int, default=24)
@@ -99,7 +106,7 @@ def parse_args():
     parser.add_argument(
         "--user_query_vector_dim",
         type=int,
-        default=200,
+        default=32,
     )
     parser.add_argument(
         "--num_attention_heads",
