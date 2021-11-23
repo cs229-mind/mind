@@ -259,11 +259,15 @@ def train(args):
                     'subcategory_dict': subcategory_dict
                 }, ckpt_path)
             logging.info(f"Model saved to {ckpt_path}")
-        # save history last of epoch
-        if len(LOSS) != 0:
-            write_history(LOSS, ACC, outfile)
-            LOSS, ACC = [], []
-            logging.info(f"Training history saved to {outfile}")        
+            # save history last of epoch
+            if len(LOSS) != 0:
+                write_history(LOSS, ACC, outfile)
+                LOSS, ACC = [], []
+                logging.info(f"Training history saved to {outfile}")
+
+        # evaluate the model for each epoch
+        args.test_dir = 'dev'
+        test(args)
 
     dataloader.join()
 
@@ -297,7 +301,7 @@ def test(args):
     category_dict = checkpoint['category_dict']
     word_dict = checkpoint['word_dict']
     domain_dict = checkpoint['domain_dict']
-    user_dict = checkpoint['user_dict']
+    user_dict = checkpoint['user_dict'] if 'user_dict' in checkpoint else []
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
@@ -393,15 +397,23 @@ def test(args):
 
     AUC, MRR, nDCG5, nDCG10, SCORE = [], [], [], [], []
     count = 0
-    outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
 
+    outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def print_metrics(hvd_local_rank, cnt, x):
-        logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
-            '\t'.join(["{:0.2f}".format(i * 100) for i in x])))
+        metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
+            '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
+        logging.info(metrics)
+        # save the metrics result
+        def write_tsv(etrics):
+            with open(outfile_metrics, 'a') as out_file:
+                out_file.write(metrics + '\n')
+            logging.info(f"Saved metrics to {outfile_metrics}")
+        write_tsv(metrics)
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
+    outfile_prediction = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def write_score(SCORE, outfile):
         # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
         for score in tqdm(SCORE):
@@ -409,12 +421,12 @@ def test(args):
             ranks = np.empty_like(argsort)
             ranks[argsort] = np.arange(len(score[1]))
             score[1] = (ranks + 1).tolist()
-
         # save the prediction result
         def write_tsv(score):
-            with open(outfile, 'a') as out_file:
+            with open(outfile_prediction, 'a') as out_file:
                 tsv_writer = csv.writer(out_file, delimiter='\t')
                 tsv_writer.writerows(score)
+            logging.info(f"Saved scoring to {outfile_prediction}")
         write_tsv(SCORE)
 
     with torch.no_grad():
