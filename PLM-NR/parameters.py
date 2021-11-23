@@ -78,7 +78,7 @@ def parse_args():
     parser.add_argument(
         "--word_embedding_dim",
         type=int,
-        default=384,
+        default=768,
     )
     parser.add_argument("--embedding_source",
                         type=str,
@@ -136,7 +136,7 @@ def parse_args():
 
     # pretrain
     parser.add_argument("--pretrain_lm_path", type=str,
-                        default="~/mind/MiniLM-L12-H384-uncased",
+                        default="~/mind/bert-base-uncased",
                         choices=['~/mind/bert-base-uncased', '~/mind/MiniLM-L12-H384-uncased'])
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
     parser.add_argument("--pretrain_news_encoder_path", type=str, default="~/mind/bert-base-uncased")
