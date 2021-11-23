@@ -414,7 +414,7 @@ def test(args):
         return [np.array(i).mean() for i in arr]
 
     outfile_prediction = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
-    def write_score(SCORE, outfile):
+    def write_score(SCORE):
         # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
         for score in tqdm(SCORE):
             argsort = np.argsort(-score[1])
@@ -473,7 +473,7 @@ def test(args):
             if cnt % args.save_steps == 0:
                 if len(SCORE) > 0:
                     logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
-                    write_score(SCORE, outfile)
+                    write_score(SCORE)
                     SCORE = []
 
     # stop scoring
@@ -483,7 +483,7 @@ def test(args):
     # save the last batch of scores
     if len(SCORE) > 0:
         logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
-        write_score(SCORE, outfile)
+        write_score(SCORE)
         SCORE = []
 
     # print and save metrics
