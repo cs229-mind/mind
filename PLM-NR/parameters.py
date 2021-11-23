@@ -7,7 +7,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",
                         type=str,
-                        default="test",
+                        default="train_test",
                         choices=['train', 'test', 'train_test'])
     parser.add_argument(
         "--root_data_dir",
@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument("--scoring_output", type=str, default="202111210537*.tsv")
     parser.add_argument("--model_dir", type=str, default='~/mind/PLM-NR/model')
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--npratio", type=int, default=4)
+    parser.add_argument("--npratio", type=int, default=1)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
     parser.add_argument("--enable_incremental", type=utils.str2bool, default=False)
@@ -43,7 +43,7 @@ def parse_args():
     parser.add_argument("--log_steps", type=int, default=100)
 
     # model training
-    parser.add_argument("--epochs", type=int, default=4)
+    parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--optimizer", type=str, default='AdamW', choices=['Adam', 'AdamW'])
     parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--weight_decay", type=float, default=1e-5)
@@ -60,7 +60,7 @@ def parse_args():
         "--user_attributes",
         type=str,
         nargs='+',
-        default=['click_docs', 'user_id'],
+        default=['click_docs'],
         choices=['click_docs', 'user_id'])
     parser.add_argument("--process_uet", type=utils.str2bool, default=False)
     parser.add_argument("--process_bing", type=utils.str2bool, default=False)
@@ -78,7 +78,7 @@ def parse_args():
     parser.add_argument(
         "--word_embedding_dim",
         type=int,
-        default=384,
+        default=768,
     )
     parser.add_argument("--embedding_source",
                         type=str,
@@ -116,7 +116,7 @@ def parse_args():
     parser.add_argument("--user_log_mask", type=utils.str2bool, default=True)
     parser.add_argument("--drop_rate", type=float, default=0.2)
     parser.add_argument("--save_steps", type=int, default=5000)
-    parser.add_argument("--max_steps_per_epoch", type=int, default=35000)
+    parser.add_argument("--max_steps_per_epoch", type=int, default=10000)
 
     parser.add_argument(
         "--load_ckpt_train",
@@ -136,7 +136,7 @@ def parse_args():
 
     # pretrain
     parser.add_argument("--pretrain_lm_path", type=str,
-                        default="~/mind/MiniLM-L12-H384-uncased",
+                        default="~/mind/bert-base-uncased",
                         choices=['~/mind/bert-base-uncased', '~/mind/MiniLM-L12-H384-uncased'])
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
     parser.add_argument("--pretrain_news_encoder_path", type=str, default="~/mind/bert-base-uncased")

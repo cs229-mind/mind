@@ -95,6 +95,15 @@ def train(args):
         args
     )
 
+    # user_dict2 = read_user(
+    #     os.path.join(os.path.expanduser(args.root_data_dir),
+    #                 f'{args.dataset}/dev/'),
+    #     args.filename_pat,
+    #     args
+    # )
+
+    # intersection = user_dict.keys() & user_dict2.keys()
+
     news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
         os.path.join(os.path.expanduser(args.root_data_dir),
                     f'{args.dataset}/{args.train_dir}/news.tsv'), 
@@ -249,26 +258,35 @@ def train(args):
 
         # save model last of epoch
         if hvd_rank == 0:
-            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}.pt')
+            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
             torch.save(
                 {
                     'model_state_dict': model.state_dict(),
+                    'user_dict': user_dict,
                     'category_dict': category_dict,
                     'word_dict': word_dict,
                     'domain_dict': domain_dict,
                     'subcategory_dict': subcategory_dict
                 }, ckpt_path)
             logging.info(f"Model saved to {ckpt_path}")
-        # save history last of epoch
-        if len(LOSS) != 0:
-            write_history(LOSS, ACC, outfile)
-            LOSS, ACC = [], []
-            logging.info(f"Training history saved to {outfile}")        
+            # save history last of epoch
+            if len(LOSS) != 0:
+                write_history(LOSS, ACC, outfile)
+                LOSS, ACC = [], []
+                logging.info(f"Training history saved to {outfile}")
+
+        # evaluate the model for each epoch
+        args.test_dir = 'dev'
+        model.eval()
+        torch.set_grad_enabled(False)        
+        test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
+        model.train()
+        torch.set_grad_enabled(True)
 
     dataloader.join()
 
 
-def test(args):
+def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, domain_dict=None, subcategory_dict=None, tokenizer=None):
     start_time = time.time()
 
     if args.enable_hvd:
@@ -290,31 +308,33 @@ def test(args):
         checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
 
     if 'subcategory_dict' in checkpoint:
-        subcategory_dict = checkpoint['subcategory_dict']
+        subcategory_dict = checkpoint['subcategory_dict'] if subcategory_dict is None else subcategory_dict
     else:
         subcategory_dict = {}
 
-    category_dict = checkpoint['category_dict']
-    word_dict = checkpoint['word_dict']
-    domain_dict = checkpoint['domain_dict']
-    user_dict = checkpoint['user_dict']
+    category_dict = checkpoint['category_dict'] if category_dict is None else category_dict
+    word_dict = checkpoint['word_dict'] if category_dict is None else category_dict
+    domain_dict = checkpoint['domain_dict'] if category_dict is None else category_dict
+    user_dict = checkpoint['user_dict'] if user_dict is None and 'user_dict' in checkpoint else user_dict if user_dict is not None else {}
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
-    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
-    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
-    model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
+    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path)) if tokenizer is None else tokenizer
 
-    if args.enable_gpu:
-        model.cuda()
+    if model is None:
+        config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
+        bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
+        model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
 
-    model.load_state_dict(checkpoint['model_state_dict'])
-    logging.info(f"Model loaded from {ckpt_path}")
+        if args.enable_gpu:
+            model.cuda()
 
-    if args.enable_hvd:
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        logging.info(f"Model loaded from {ckpt_path}")
 
-    model.eval()
-    torch.set_grad_enabled(False)
+        if args.enable_hvd:
+            hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+
+        model.eval()
+        torch.set_grad_enabled(False)
 
     news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
         os.path.join(os.path.expanduser(args.root_data_dir),
@@ -393,28 +413,36 @@ def test(args):
 
     AUC, MRR, nDCG5, nDCG10, SCORE = [], [], [], [], []
     count = 0
-    outfile = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
 
+    outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def print_metrics(hvd_local_rank, cnt, x):
-        logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
-            '\t'.join(["{:0.2f}".format(i * 100) for i in x])))
+        metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
+            '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
+        logging.info(metrics)
+        # save the metrics result
+        def write_tsv(etrics):
+            with open(outfile_metrics, 'a') as out_file:
+                out_file.write(metrics + '\n')
+            logging.info(f"Saved metrics to {outfile_metrics}")
+        write_tsv(metrics)
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    def write_score(SCORE, outfile):
+    outfile_prediction = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
+    def write_score(SCORE):
         # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
         for score in tqdm(SCORE):
             argsort = np.argsort(-score[1])
             ranks = np.empty_like(argsort)
             ranks[argsort] = np.arange(len(score[1]))
             score[1] = (ranks + 1).tolist()
-
         # save the prediction result
         def write_tsv(score):
-            with open(outfile, 'a') as out_file:
+            with open(outfile_prediction, 'a') as out_file:
                 tsv_writer = csv.writer(out_file, delimiter='\t')
                 tsv_writer.writerows(score)
+            logging.info(f"Saved scoring to {outfile_prediction}")
         write_tsv(SCORE)
 
     with torch.no_grad():
@@ -461,7 +489,7 @@ def test(args):
             if cnt % args.save_steps == 0:
                 if len(SCORE) > 0:
                     logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
-                    write_score(SCORE, outfile)
+                    write_score(SCORE)
                     SCORE = []
 
     # stop scoring
@@ -471,7 +499,7 @@ def test(args):
     # save the last batch of scores
     if len(SCORE) > 0:
         logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
-        write_score(SCORE, outfile)
+        write_score(SCORE)
         SCORE = []
 
     # print and save metrics

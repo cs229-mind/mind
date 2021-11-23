@@ -153,9 +153,17 @@ def test(args):
     nDCG10 = []
     SCORE = []
 
+    outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def print_metrics(hvd_local_rank, cnt, x):
-        logging.info("[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
-            '\t'.join(["{:0.2f}".format(i * 100) for i in x])))
+        metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
+            '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
+        logging.info(metrics)
+        # save the metrics result
+        def write_tsv(etrics):
+            with open(outfile_metrics, 'a') as out_file:
+                out_file.write(metrics + '\n')
+            logging.info(f"Saved metrics to {outfile_metrics}")
+        write_tsv(metrics)
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
@@ -240,12 +248,12 @@ def test(args):
         score[1] = (ranks + 1).tolist()
 
     # save the prediction result
-    outfile = os.path.join("./model", "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
+    outfile_prediction = os.path.join("./model", "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def write_tsv(score):
-        with open(outfile, 'wt') as out_file:
+        with open(outfile_prediction, 'wt') as out_file:
             tsv_writer = csv.writer(out_file, delimiter='\t')
             tsv_writer.writerows(score)
-        logging.info(f"Saved scoring to {outfile}")
+        logging.info(f"Saved scoring to {outfile_prediction}")
     write_tsv(SCORE)
 
     logging.info(f"Time taken: {time.time() - start_time}")
