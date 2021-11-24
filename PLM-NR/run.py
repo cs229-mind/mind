@@ -280,13 +280,13 @@ def train(args):
                 LOSS, ACC = [], []
                 logging.info(f"Training history saved to {outfile}")
 
-        # evaluate the model for each epoch
-        args.test_dir = 'dev'
-        model.eval()
-        torch.set_grad_enabled(False)        
-        test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
-        model.train()
-        torch.set_grad_enabled(True)
+            # evaluate the model for each epoch
+            args.test_dir = 'dev'
+            model.eval()
+            torch.set_grad_enabled(False)        
+            test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
+            model.train()
+            torch.set_grad_enabled(True)
 
     dataloader.join()
 
