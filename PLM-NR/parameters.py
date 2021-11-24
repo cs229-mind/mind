@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument("--correct_bias", type=utils.str2bool, default=True)
     parser.add_argument("--enable_lr_scheduler", type=utils.str2bool, default=True)
     parser.add_argument("--num_warmup_steps", type=int, default=500)
+    parser.add_argument("--fineune_options", type=int, default=-2, choices=[0, -2, -12])
     parser.add_argument(
         "--news_attributes",
         type=str,
@@ -78,7 +79,7 @@ def parse_args():
     parser.add_argument(
         "--word_embedding_dim",
         type=int,
-        default=768,
+        default=384,
     )
     parser.add_argument("--embedding_source",
                         type=str,
@@ -136,7 +137,7 @@ def parse_args():
 
     # pretrain
     parser.add_argument("--pretrain_lm_path", type=str,
-                        default="~/mind/bert-base-uncased",
+                        default="~/mind/MiniLM-L12-H384-uncased",
                         choices=['~/mind/bert-base-uncased', '~/mind/MiniLM-L12-H384-uncased'])
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
     parser.add_argument("--pretrain_news_encoder_path", type=str, default="~/mind/bert-base-uncased")

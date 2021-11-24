@@ -85,8 +85,13 @@ def train(args):
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
     # freeze parameters
     for name,param in bert_model.named_parameters():
-        if name not in finetuneset:
+        if args.fineune_options == 0:
             param.requires_grad = False
+        elif args.fineune_options == -2:
+            if name not in finetuneset:
+                param.requires_grad = False
+        else:  #args.fineune_options == -12:
+            continue
 
     user_dict = read_user(
         os.path.join(os.path.expanduser(args.root_data_dir),
@@ -448,7 +453,6 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     with torch.no_grad():
         for cnt, (impression_ids, user_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
             # logging.info(f"start new batch {cnt}")
-            break
             count = cnt
 
             if args.enable_gpu:
