@@ -448,6 +448,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     with torch.no_grad():
         for cnt, (impression_ids, user_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
             # logging.info(f"start new batch {cnt}")
+            break
             count = cnt
 
             if args.enable_gpu:

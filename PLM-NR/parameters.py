@@ -141,6 +141,9 @@ def parse_args():
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
     parser.add_argument("--pretrain_news_encoder_path", type=str, default="~/mind/bert-base-uncased")
 
+    # inference
+    parser.add_argument("--ignore_unseen_user", type=utils.str2bool, default=False)
+
     # uet add method
     parser.add_argument(
         "--uet_agg_method", 
