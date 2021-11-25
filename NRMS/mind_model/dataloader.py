@@ -160,7 +160,7 @@ class DataLoaderTrain(IterableDataset):
 
         for poss, line in zip(batch_poss, batch):
             user_id = line[1]
-            user_id = self.trans_to_uindex([user_id])
+            #user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -353,7 +353,7 @@ class DataLoaderTest(DataLoaderTrain):
             impression_id = line[0]
 
             user_id = line[1]
-            user_id = self.trans_to_uindex([user_id])
+            #user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -434,7 +434,7 @@ def test_iterator(model, valid_dir, args, tokenizer):
     def news_collate_fn(arr):
         arr = torch.LongTensor(arr)
         return arr
-    
+
     news_dataset = NewsDataset(news_combined)
     news_dataloader = DataLoader(news_dataset,
                                  batch_size=args.batch_size * 4,
