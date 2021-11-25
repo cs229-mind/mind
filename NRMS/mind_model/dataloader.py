@@ -13,7 +13,7 @@ from . import utils
 from .preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 from torch.utils.data import Dataset, DataLoader
 import os
-import tqdm
+from tqdm import tqdm
 
 
 def news_sample(news, ratio):
@@ -89,7 +89,8 @@ class DataLoaderTrain(IterableDataset):
         return [self.news_index[i] if i in self.news_index else 0 for i in nids]
 
     def trans_to_uindex(self, uids):
-        return [self.user_dict[i] if i in self.user_dict else 0 for i in uids]
+        #return [self.user_dict[i] if i in self.user_dict else 0 for i in uids]
+        return 0
 
     def pad_to_fix_len(self, x, fix_length, padding_front=True, padding_value=0):
         if padding_front:
@@ -160,7 +161,7 @@ class DataLoaderTrain(IterableDataset):
 
         for poss, line in zip(batch_poss, batch):
             user_id = line[1]
-            #user_id = self.trans_to_uindex([user_id])
+            user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -353,7 +354,7 @@ class DataLoaderTest(DataLoaderTrain):
             impression_id = line[0]
 
             user_id = line[1]
-            #user_id = self.trans_to_uindex([user_id])
+            user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -465,7 +466,7 @@ def test_iterator(model, valid_dir, args, tokenizer):
         worker_rank=hvd_rank,
         cuda_device_idx=hvd_local_rank,
         enable_prefetch=True,
-        enable_shuffle=True,
+        enable_shuffle=False,
         enable_gpu=args.enable_gpu,
     )
     return {"iterator": dev_dataloader,
