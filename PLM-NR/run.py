@@ -1,6 +1,7 @@
 import faulthandler
 import signal
 faulthandler.register(signal.SIGUSR1.value)
+import pickle
 import numpy as np
 import torch
 import pickle
@@ -70,9 +71,9 @@ def train(args):
 
     if args.load_ckpt_train is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(os.path.expanduser(os.path.expanduser(args.model_dir)), args.load_ckpt_train)
+        ckpt_path = utils.get_checkpoint(os.path.join(os.path.expanduser(args.model_dir), args.load_ckpt_train))
     else:
-        ckpt_path = utils.latest_checkpoint(os.path.expanduser(os.path.expanduser(args.model_dir)))
+        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
@@ -85,31 +86,37 @@ def train(args):
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
     # freeze parameters
     for name,param in bert_model.named_parameters():
-        if name not in finetuneset:
+        if args.fineune_options == 0:
             param.requires_grad = False
+        elif args.fineune_options == -2:
+            if name not in finetuneset:
+                param.requires_grad = False
+        else:  #args.fineune_options == -12:
+            continue
 
-    user_dict = read_user(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.train_dir}/'),
-        args.filename_pat,
-        args
-    )
+    if args.enable_incremental and ckpt_path is not None:
+        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        user_dict = checkpoint['user_dict']
+    else:
+        user_dict = read_user(
+            os.path.join(os.path.expanduser(args.root_data_dir),
+                        f'{args.dataset}/{args.train_dir}/'),
+            args.filename_pat,
+            args
+        )
 
-    # user_dict2 = read_user(
-    #     os.path.join(os.path.expanduser(args.root_data_dir),
-    #                 f'{args.dataset}/dev/'),
-    #     args.filename_pat,
-    #     args
-    # )
-
-    # intersection = user_dict.keys() & user_dict2.keys()
-
-    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.train_dir}/news.tsv'), 
-        args,
-        tokenizer
-    )
+    # save 1~2 minutes time, manually delete the cache file if cache is outdated
+    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), "news_cache_train.pkl")
+    if os.path.exists(news_cache_path):
+        news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
+    else:
+        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+            os.path.join(os.path.expanduser(args.root_data_dir),
+                        f'{args.dataset}/{args.train_dir}/news.tsv'), 
+            args,
+            tokenizer
+        )
+        pickle.dump((news, news_index, category_dict, domain_dict, subcategory_dict), open(news_cache_path, "wb"))
 
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
@@ -132,18 +139,21 @@ def train(args):
         model = model.cuda()
 
     if args.enable_incremental:
-        assert ckpt_path is not None, 'No ckpt found'
-        if args.enable_gpu:
-            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        if ckpt_path is None:
+            logging.warning('No ckpt found! Warm start is skipped!!!')
         else:
-            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
-        user_dict = checkpoint['user_dict']
-        category_dict = checkpoint['category_dict']
-        subcategory_dict = checkpoint['subcategory_dict']
-        word_dict = checkpoint['word_dict']
-        domain_dict = checkpoint['domain_dict']
-        model.load_state_dict(checkpoint['model_state_dict'])
-        logging.info(f"Model loaded from {ckpt_path} for incremental training")
+            # this is not an error, set both to cpu to avoid conflict in gpu process for now
+            if args.enable_gpu:
+                checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+            else:
+                checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+            user_dict = checkpoint['user_dict']
+            category_dict = checkpoint['category_dict']
+            subcategory_dict = checkpoint['subcategory_dict']
+            word_dict = checkpoint['word_dict']
+            domain_dict = checkpoint['domain_dict']
+            model.load_state_dict(checkpoint['model_state_dict'])
+            logging.info(f"Model loaded from {ckpt_path} for incremental training")
 
     lr_scaler = hvd.local_size()
     if args.optimizer == 'Adam':
@@ -171,7 +181,6 @@ def train(args):
             named_parameters=model.named_parameters(),
             compression=compression,
             op=hvd.Average)
-
 
     dataloader = DataLoaderTrain(
         news_index=news_index,
@@ -236,9 +245,9 @@ def train(args):
                         hvd_rank, cnt * args.batch_size, loss.data,
                         accuracy))
 
-            # save model minibatch
+            # save model for every num of save steps
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
-            if hvd_rank == 0 and cnt % args.save_steps == 0:
+            def save_model(LOSS, ACC, eva=True):
                 ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
                 torch.save(
                     {
@@ -250,38 +259,28 @@ def train(args):
                         'subcategory_dict': subcategory_dict
                     }, ckpt_path)
                 logging.info(f"Model saved to {ckpt_path}")
-                write_history(LOSS, ACC, outfile)
-                LOSS, ACC = [], []
-                logging.info(f"Training history saved to {outfile}")
+                # save history
+                if len(LOSS) != 0:
+                    write_history(LOSS, ACC, outfile)
+                    LOSS, ACC = [], []
+                    logging.info(f"Training history saved to {outfile}")
+
+                # evaluate the model for each save
+                if eva:
+                    args.test_dir = 'dev'
+                    model.eval()
+                    torch.set_grad_enabled(False)
+                    metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
+                    model.train()
+                    torch.set_grad_enabled(True)
+            if hvd_rank == 0 and cnt % args.save_steps == 0:
+                save_model(LOSS, ACC, cnt != 0)
 
         logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
 
         # save model last of epoch
         if hvd_rank == 0:
-            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
-            torch.save(
-                {
-                    'model_state_dict': model.state_dict(),
-                    'user_dict': user_dict,
-                    'category_dict': category_dict,
-                    'word_dict': word_dict,
-                    'domain_dict': domain_dict,
-                    'subcategory_dict': subcategory_dict
-                }, ckpt_path)
-            logging.info(f"Model saved to {ckpt_path}")
-            # save history last of epoch
-            if len(LOSS) != 0:
-                write_history(LOSS, ACC, outfile)
-                LOSS, ACC = [], []
-                logging.info(f"Training history saved to {outfile}")
-
-        # evaluate the model for each epoch
-        args.test_dir = 'dev'
-        model.eval()
-        torch.set_grad_enabled(False)        
-        test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
-        model.train()
-        torch.set_grad_enabled(True)
+            save_model(LOSS, ACC)
 
     dataloader.join()
 
@@ -302,6 +301,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
     assert ckpt_path is not None, 'No ckpt found'
+    # this is not an error, set both to cpu to avoid conflict in gpu process for now    
     if args.enable_gpu:
         checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
     else:
@@ -313,8 +313,8 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         subcategory_dict = {}
 
     category_dict = checkpoint['category_dict'] if category_dict is None else category_dict
-    word_dict = checkpoint['word_dict'] if category_dict is None else category_dict
-    domain_dict = checkpoint['domain_dict'] if category_dict is None else category_dict
+    word_dict = checkpoint['word_dict'] if word_dict is None else word_dict
+    domain_dict = checkpoint['domain_dict'] if domain_dict is None else domain_dict
     user_dict = checkpoint['user_dict'] if user_dict is None and 'user_dict' in checkpoint else user_dict if user_dict is not None else {}
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path)) if tokenizer is None else tokenizer
@@ -336,12 +336,18 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         model.eval()
         torch.set_grad_enabled(False)
 
-    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.test_dir}/news.tsv'), 
-        args,
-        tokenizer
-    )
+    # save 1~2 minutes time, manually delete the cache file if cache is outdated
+    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.test_dir}.pkl")
+    if os.path.exists(news_cache_path):
+        news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
+    else:
+        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+            os.path.join(os.path.expanduser(args.root_data_dir),
+                        f'{args.dataset}/{args.train_dir}/news.tsv'), 
+            args,
+            tokenizer
+        )
+        pickle.dump((news, news_index, category_dict, domain_dict, subcategory_dict), open(news_cache_path, "wb"))
 
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
@@ -415,7 +421,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     count = 0
 
     outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
-    def print_metrics(hvd_local_rank, cnt, x):
+    def print_metrics(hvd_local_rank, cnt, x, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
             '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
         logging.info(metrics)
@@ -424,7 +430,9 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
             with open(outfile_metrics, 'a') as out_file:
                 out_file.write(metrics + '\n')
             logging.info(f"Saved metrics to {outfile_metrics}")
-        write_tsv(metrics)
+        if save:
+            write_tsv(metrics)
+        return metrics
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
@@ -484,7 +492,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
 
             if cnt % args.log_steps == 0:
                 # print_metrics(hvd_rank, cnt * args.batch_size, [1.0])
-                print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+                print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]), save=False)
 
             if cnt % args.save_steps == 0:
                 if len(SCORE) > 0:
@@ -504,9 +512,11 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
 
     # print and save metrics
     logging.info("Print final metrics")
-    print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    final_metrics = print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     logging.info(f"Time taken: {time.time() - start_time}")
+
+    return final_metrics
 
 
 if __name__ == "__main__":

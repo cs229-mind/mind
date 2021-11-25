@@ -74,6 +74,13 @@ class DataLoaderTrain(IterableDataset):
         )
         self.sampler.__iter__()
 
+    def start_async(self):
+        self.aval_count = 0
+        self.stopped = False
+        self.outputs = Queue(10)
+        self.pool = ThreadPoolExecutor(1)
+        self.pool.submit(self._produce)
+
     def trans_to_nindex(self, nids):
         return [self.news_index[i] if i in self.news_index else 0 for i in nids]
 
@@ -121,17 +128,10 @@ class DataLoaderTrain(IterableDataset):
             self.outputs.put(None)
         except:
             # put a None object to communicate the end of queue
-            self.outputs.put(None)            
+            self.outputs.put(None)
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise
-
-    def start_async(self):
-        self.aval_count = 0
-        self.stopped = False
-        self.outputs = Queue(10)
-        self.pool = ThreadPoolExecutor(1)
-        self.pool.submit(self._produce)
 
     def parse_sent(self, sent, fix_length):
         sent = [self.word_dict[w] if w in self.word_dict else 0 for w in utils.word_tokenize(sent)]

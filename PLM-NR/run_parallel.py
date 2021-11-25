@@ -171,6 +171,8 @@ def test(args):
     def score_func(model, batch):
         user_ids, log_vecs, log_mask, impression_ids, news_vecs, news_bias, labels = [], [], [], [], [], [], []
         for (impression_id, user_id, log_vec, mask, news_vec, bias, label) in batch:
+            if args.ignore_unseen_user and user_id[0] == 0:
+                continue
             impression_ids.append(impression_id)
             user_ids.append(user_id)
             log_vecs.append(log_vec)
@@ -191,6 +193,9 @@ def test(args):
             user_ids = user_ids.cuda(non_blocking=True)
             log_vecs = log_vecs.cuda(non_blocking=True)
             log_mask = log_mask.cuda(non_blocking=True)
+
+        if args.ignore_unseen_user and len(user_ids) == 0:
+            return []
 
         user_vecs = model.user_encoder(user_ids, log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
 

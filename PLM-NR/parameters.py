@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument("--npratio", type=int, default=1)
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
-    parser.add_argument("--enable_incremental", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_incremental", type=utils.str2bool, default=True)
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=6)
     parser.add_argument("--filter_num_user", type=int, default=0)
@@ -44,17 +44,19 @@ def parse_args():
 
     # model training
     parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--ltr_loss", type=str, default='cb_ndcg', choices=['pointwise', 'pairwise', 'softmax', 'cb_ndcg', 'neural_ndcg'])
     parser.add_argument("--optimizer", type=str, default='AdamW', choices=['Adam', 'AdamW'])
-    parser.add_argument("--lr", type=float, default=5e-5)
-    parser.add_argument("--weight_decay", type=float, default=1e-5)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--weight_decay", type=float, default=1e-2)
     parser.add_argument("--correct_bias", type=utils.str2bool, default=True)
     parser.add_argument("--enable_lr_scheduler", type=utils.str2bool, default=True)
-    parser.add_argument("--num_warmup_steps", type=int, default=500)
+    parser.add_argument("--num_warmup_steps", type=int, default=1000)
+    parser.add_argument("--fineune_options", type=int, default=-2, choices=[0, -2, -12])
     parser.add_argument(
         "--news_attributes",
         type=str,
         nargs='+',
-        default=['title', 'abstract', 'category'],
+        default=['title'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
     parser.add_argument(
         "--user_attributes",
@@ -78,7 +80,7 @@ def parse_args():
     parser.add_argument(
         "--word_embedding_dim",
         type=int,
-        default=768,
+        default=384,
     )
     parser.add_argument("--embedding_source",
                         type=str,
@@ -116,7 +118,7 @@ def parse_args():
     parser.add_argument("--user_log_mask", type=utils.str2bool, default=True)
     parser.add_argument("--drop_rate", type=float, default=0.2)
     parser.add_argument("--save_steps", type=int, default=5000)
-    parser.add_argument("--max_steps_per_epoch", type=int, default=10000)
+    parser.add_argument("--max_steps_per_epoch", type=int, default=10)
 
     parser.add_argument(
         "--load_ckpt_train",
@@ -136,10 +138,13 @@ def parse_args():
 
     # pretrain
     parser.add_argument("--pretrain_lm_path", type=str,
-                        default="~/mind/bert-base-uncased",
+                        default="~/mind/MiniLM-L12-H384-uncased",
                         choices=['~/mind/bert-base-uncased', '~/mind/MiniLM-L12-H384-uncased'])
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
     parser.add_argument("--pretrain_news_encoder_path", type=str, default="~/mind/bert-base-uncased")
+
+    # inference
+    parser.add_argument("--ignore_unseen_user", type=utils.str2bool, default=False)
 
     # uet add method
     parser.add_argument(
