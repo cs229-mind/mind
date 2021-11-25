@@ -29,8 +29,7 @@ def read_news_bert(news_path, args, tokenizer, mode='train'):
 
             if 'title' in args.news_attributes:
                 title = title.lower()
-                title = tokenizer(title, max_length=args.num_words_title, \
-                pad_to_max_length=True, truncation=True)
+                title = tokenizer(title, max_length=args.num_words_title, pad_to_max_length=True, truncation=True)
             else:
                 title = []
 
