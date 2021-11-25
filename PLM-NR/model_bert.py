@@ -4,6 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 import os
 import math
+from ltr_loss.loss_func import get_loss_func
 
 
 class AdditiveAttention(nn.Module):
@@ -380,7 +381,8 @@ class ModelBert(torch.nn.Module):
                                         subcategory_dict_size)
         self.user_encoder = UserEncoder(args, user_dict_size)
 
-        self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.CrossEntropyLoss()
+        self.criterion = get_loss_func(args)
 
     def forward(self,
                 input_ids,

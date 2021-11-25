@@ -1,6 +1,7 @@
 import faulthandler
 import signal
 faulthandler.register(signal.SIGUSR1.value)
+import pickle
 import numpy as np
 import torch
 import pickle
@@ -70,9 +71,9 @@ def train(args):
 
     if args.load_ckpt_train is not None:
         #TODO: choose ckpt_path
-        ckpt_path = utils.get_checkpoint(os.path.expanduser(os.path.expanduser(args.model_dir)), args.load_ckpt_train)
+        ckpt_path = utils.get_checkpoint(os.path.join(os.path.expanduser(args.model_dir), args.load_ckpt_train))
     else:
-        ckpt_path = utils.latest_checkpoint(os.path.expanduser(os.path.expanduser(args.model_dir)))
+        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
@@ -93,28 +94,29 @@ def train(args):
         else:  #args.fineune_options == -12:
             continue
 
-    user_dict = read_user(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.train_dir}/'),
-        args.filename_pat,
-        args
-    )
+    if args.enable_incremental and ckpt_path is not None:
+        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        user_dict = checkpoint['user_dict']
+    else:
+        user_dict = read_user(
+            os.path.join(os.path.expanduser(args.root_data_dir),
+                        f'{args.dataset}/{args.train_dir}/'),
+            args.filename_pat,
+            args
+        )
 
-    # user_dict2 = read_user(
-    #     os.path.join(os.path.expanduser(args.root_data_dir),
-    #                 f'{args.dataset}/dev/'),
-    #     args.filename_pat,
-    #     args
-    # )
-
-    # intersection = user_dict.keys() & user_dict2.keys()
-
-    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.train_dir}/news.tsv'), 
-        args,
-        tokenizer
-    )
+    # save 1~2 minutes time, manually delete the cache file if cache is outdated
+    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), "news_cache.pkl")
+    if os.path.exists(news_cache_path):
+        news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
+    else:
+        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+            os.path.join(os.path.expanduser(args.root_data_dir),
+                        f'{args.dataset}/{args.train_dir}/news.tsv'), 
+            args,
+            tokenizer
+        )
+        pickle.dump((news, news_index, category_dict, domain_dict, subcategory_dict), open(news_cache_path, "wb"))
 
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
@@ -137,18 +139,21 @@ def train(args):
         model = model.cuda()
 
     if args.enable_incremental:
-        assert ckpt_path is not None, 'No ckpt found'
-        if args.enable_gpu:
-            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        if ckpt_path is None:
+            logging.warning('No ckpt found! Warm start is skipped!!!')
         else:
-            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
-        user_dict = checkpoint['user_dict']
-        category_dict = checkpoint['category_dict']
-        subcategory_dict = checkpoint['subcategory_dict']
-        word_dict = checkpoint['word_dict']
-        domain_dict = checkpoint['domain_dict']
-        model.load_state_dict(checkpoint['model_state_dict'])
-        logging.info(f"Model loaded from {ckpt_path} for incremental training")
+            # this is not an error, set both to cpu to avoid conflict in gpu process for now
+            if args.enable_gpu:
+                checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+            else:
+                checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+            user_dict = checkpoint['user_dict']
+            category_dict = checkpoint['category_dict']
+            subcategory_dict = checkpoint['subcategory_dict']
+            word_dict = checkpoint['word_dict']
+            domain_dict = checkpoint['domain_dict']
+            model.load_state_dict(checkpoint['model_state_dict'])
+            logging.info(f"Model loaded from {ckpt_path} for incremental training")
 
     lr_scaler = hvd.local_size()
     if args.optimizer == 'Adam':
@@ -176,7 +181,6 @@ def train(args):
             named_parameters=model.named_parameters(),
             compression=compression,
             op=hvd.Average)
-
 
     dataloader = DataLoaderTrain(
         news_index=news_index,
@@ -307,6 +311,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
 
     assert ckpt_path is not None, 'No ckpt found'
+    # this is not an error, set both to cpu to avoid conflict in gpu process for now    
     if args.enable_gpu:
         checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
     else:
@@ -318,8 +323,8 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         subcategory_dict = {}
 
     category_dict = checkpoint['category_dict'] if category_dict is None else category_dict
-    word_dict = checkpoint['word_dict'] if category_dict is None else category_dict
-    domain_dict = checkpoint['domain_dict'] if category_dict is None else category_dict
+    word_dict = checkpoint['word_dict'] if word_dict is None else word_dict
+    domain_dict = checkpoint['domain_dict'] if domain_dict is None else domain_dict
     user_dict = checkpoint['user_dict'] if user_dict is None and 'user_dict' in checkpoint else user_dict if user_dict is not None else {}
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path)) if tokenizer is None else tokenizer
