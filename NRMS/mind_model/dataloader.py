@@ -13,6 +13,8 @@ from . import utils
 from .preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 from torch.utils.data import Dataset, DataLoader
 import os
+import tqdm
+
 
 def news_sample(news, ratio):
     if ratio > len(news):
