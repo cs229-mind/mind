@@ -392,20 +392,7 @@ class DataLoaderTest(DataLoaderTrain):
         return impression_id_batch, user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
 
 
-class NewsDataset(Dataset):
-    def __init__(self, data):
-        self.data = data
 
-    def __getitem__(self, idx):
-        return self.data[idx]
-
-    def __len__(self):
-        return self.data.shape[0]
-
-
-def news_collate_fn(arr):
-    arr = torch.LongTensor(arr)
-    return arr
 
 
 def test_iterator(model, valid_dir, args, tokenizer):
@@ -434,6 +421,20 @@ def test_iterator(model, valid_dir, args, tokenizer):
          news_category, news_domain, news_subcategory]
         if x is not None], axis=1)
 
+    class NewsDataset(Dataset):
+        def __init__(self, data):
+            self.data = data
+
+        def __getitem__(self, idx):
+            return self.data[idx]
+
+        def __len__(self):
+            return self.data.shape[0]
+
+    def news_collate_fn(arr):
+        arr = torch.LongTensor(arr)
+        return arr
+    
     news_dataset = NewsDataset(news_combined)
     news_dataloader = DataLoader(news_dataset,
                                  batch_size=args.batch_size * 4,
