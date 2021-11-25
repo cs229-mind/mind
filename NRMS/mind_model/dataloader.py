@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import IterableDataset
 from .streaming import StreamSampler, StreamSamplerTest
 from . import utils
+from .preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 
 def news_sample(news, ratio):
     if ratio > len(news):
@@ -336,3 +337,129 @@ class DataLoaderTest(DataLoaderTrain):
 
         return impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
 
+
+class NewsDataset(Dataset):
+    def __init__(self, data):
+        self.data = data
+
+    def __getitem__(self, idx):
+        return self.data[idx]
+
+    def __len__(self):
+        return self.data.shape[0]
+
+
+def news_collate_fn(arr):
+    arr = torch.LongTensor(arr)
+    return arr
+
+
+def test_iterator(model, valid_dir, args, tokenizer):
+    valid_news_file = os.path.join(valid_dir, r'news.tsv')
+    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+        valid_news_file,
+        args,
+        tokenizer
+    )
+
+    news_title, news_title_type, news_title_attmask, \
+    news_abstract, news_abstract_type, news_abstract_attmask, \
+    news_body, news_body_type, news_body_attmask, \
+    news_category, news_domain, news_subcategory = get_doc_input_bert(
+        news, news_index, category_dict, domain_dict, subcategory_dict, args)
+
+    word_dict = None
+    # args.enable_hvd = False
+    hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
+        args.enable_hvd, args.enable_gpu)
+    news_combined = np.concatenate([
+        x for x in
+        [news_title, news_title_type, news_title_attmask, \
+         news_abstract, news_abstract_type, news_abstract_attmask, \
+         news_body, news_body_type, news_body_attmask, \
+         news_category, news_domain, news_subcategory]
+        if x is not None], axis=1)
+
+    news_dataset = NewsDataset(news_combined)
+    news_dataloader = DataLoader(news_dataset,
+                                 batch_size=args.batch_size * 4,
+                                 num_workers=args.num_workers,
+                                 collate_fn=news_collate_fn)
+
+    news_scoring = []
+    with torch.no_grad():
+        for input_ids in tqdm(news_dataloader):
+            if args.enable_gpu:
+                input_ids = input_ids.cuda()
+            news_vec = model.news_encoder(input_ids)
+            news_vec = news_vec.to(torch.device("cpu")).detach().numpy()
+            news_scoring.extend(news_vec)
+
+    news_scoring = np.array(news_scoring)
+
+    dev_dataloader = DataLoaderTest(
+        news_index=news_index,
+        news_scoring=news_scoring,
+        word_dict=word_dict,
+        data_dir=valid_dir,
+        filename_pat=args.filename_pat,
+        args=args,
+        worker_size=hvd_size,
+        worker_rank=hvd_rank,
+        cuda_device_idx=hvd_local_rank,
+        enable_prefetch=True,
+        enable_shuffle=True,
+        enable_gpu=args.enable_gpu,
+    )
+    return {"iterator": dev_dataloader,
+            "category_dict": category_dict,
+            "domain_dict": domain_dict,
+            "subcategory_dict": subcategory_dict,
+            }
+
+
+def train_iterator(train_dir, args, tokenizer):
+    train_news_file = os.path.join(train_dir, r'news.tsv')
+
+    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+        train_news_file,
+        args,
+        tokenizer
+    )
+
+    news_title, news_title_type, news_title_attmask, \
+    news_abstract, news_abstract_type, news_abstract_attmask, \
+    news_body, news_body_type, news_body_attmask, \
+    news_category, news_domain, news_subcategory = get_doc_input_bert(
+        news, news_index, category_dict, domain_dict, subcategory_dict, args)
+
+    word_dict = None
+    # args.enable_hvd = False
+    hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
+        args.enable_hvd, args.enable_gpu)
+    news_combined = np.concatenate([
+        x for x in
+        [news_title, news_title_type, news_title_attmask, \
+         news_abstract, news_abstract_type, news_abstract_attmask, \
+         news_body, news_body_type, news_body_attmask, \
+         news_category, news_domain, news_subcategory]
+        if x is not None], axis=1)
+    dataloader = DataLoaderTrain(
+        news_index=news_index,
+        news_combined=news_combined,
+        word_dict=word_dict,
+        data_dir=train_dir,
+        filename_pat=args.filename_pat,
+        args=args,
+        worker_size=hvd_size,
+        worker_rank=hvd_rank,
+        cuda_device_idx=hvd_local_rank,
+        enable_prefetch=True,
+        enable_shuffle=True,
+        enable_gpu=args.enable_gpu,
+    )
+    return {"iterator": dataloader,
+            "category_dict": category_dict,
+            "domain_dict": domain_dict,
+            "subcategory_dict": subcategory_dict,
+            }
