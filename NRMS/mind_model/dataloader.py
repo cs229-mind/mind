@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset
-from .streaming import StreamSampler, StreamSamplerTest
-from . import utils
+from streaming import StreamSampler, StreamSamplerTest
+import utils
 from .preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 
 def news_sample(news, ratio):
@@ -28,6 +28,7 @@ class DataLoaderTrain(IterableDataset):
                  worker_rank,
                  cuda_device_idx,
                  news_index,
+                 user_dict,
                  news_combined,
                  word_dict,
                  enable_prefetch=True,
@@ -38,6 +39,7 @@ class DataLoaderTrain(IterableDataset):
 
         self.npratio = args.npratio
         self.user_log_length = args.user_log_length
+        self.user_attributes = args.user_attributes
         self.batch_size = args.batch_size
 
         self.worker_rank = worker_rank
@@ -55,6 +57,7 @@ class DataLoaderTrain(IterableDataset):
 
         self.news_combined = news_combined
         self.news_index = news_index
+        self.user_dict = user_dict
         self.word_dict = word_dict
 
     def start(self):
@@ -71,8 +74,18 @@ class DataLoaderTrain(IterableDataset):
         )
         self.sampler.__iter__()
 
+    def start_async(self):
+        self.aval_count = 0
+        self.stopped = False
+        self.outputs = Queue(10)
+        self.pool = ThreadPoolExecutor(1)
+        self.pool.submit(self._produce)
+
     def trans_to_nindex(self, nids):
         return [self.news_index[i] if i in self.news_index else 0 for i in nids]
+
+    def trans_to_uindex(self, uids):
+        return [self.user_dict[i] if i in self.user_dict else 0 for i in uids]
 
     def pad_to_fix_len(self, x, fix_length, padding_front=True, padding_value=0):
         if padding_front:
@@ -101,23 +114,24 @@ class DataLoaderTrain(IterableDataset):
             # t0 = time.time()
             for batch in self.sampler:
                 if self.stopped:
+                    # put a None object to communicate the end of queue
+                    self.outputs.put(None)
                     break
+                # print(f"!!!!!!!!!!!! put start {self.aval_count}")
                 context = self._process(batch)
                 self.outputs.put(context)
                 self.aval_count += 1
+                # print(f"!!!!!!!!!!!! put end {self.aval_count}")
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
         except:
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise
-
-    def start_async(self):
-        self.aval_count = 0
-        self.stopped = False
-        self.outputs = Queue(10)
-        self.pool = ThreadPoolExecutor(1)
-        self.pool.submit(self._produce)
 
     def parse_sent(self, sent, fix_length):
         sent = [self.word_dict[w] if w in self.word_dict else 0 for w in utils.word_tokenize(sent)]
@@ -138,9 +152,12 @@ class DataLoaderTrain(IterableDataset):
         batch_poss = [x.numpy().decode(encoding="utf-8") for x in batch_poss]
         batch = [x.numpy().decode(encoding="utf-8").split("\t") for x in batch]
         label = 0
-        user_feature_batch, log_mask_batch, news_feature_batch, label_batch = [], [], [], []
+        user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, label_batch = [], [], [], [], []
 
         for poss, line in zip(batch_poss, batch):
+            user_id = line[1]
+            user_id = self.trans_to_uindex([user_id])
+
             click_docs = line[3].split()
 
             click_docs, log_mask = self.pad_to_fix_len(self.trans_to_nindex(click_docs),
@@ -163,23 +180,26 @@ class DataLoaderTrain(IterableDataset):
             sample_news = poss + sam_negs
 
             news_feature = self.news_combined[sample_news]
+            user_id_batch.append(user_id)
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
             news_feature_batch.append(news_feature)
             label_batch.append(label)
 
         if self.enable_gpu:
+            user_id_batch = torch.LongTensor(user_id_batch).cuda()
             user_feature_batch = torch.LongTensor(user_feature_batch).cuda()
             log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
             news_feature_batch = torch.LongTensor(news_feature_batch).cuda()
             label_batch = torch.LongTensor(label_batch).cuda()
         else:
+            user_id_batch = torch.LongTensor(user_id_batch)
             user_feature_batch = torch.LongTensor(user_feature_batch)
             log_mask_batch = torch.FloatTensor(log_mask_batch)
             news_feature_batch = torch.LongTensor(news_feature_batch)
             label_batch = torch.LongTensor(label_batch)
 
-        return user_feature_batch, log_mask_batch, news_feature_batch, label_batch
+        return user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, label_batch
 
     def __iter__(self):
         """Implement IterableDataset method to provide data iterator."""
@@ -195,9 +215,15 @@ class DataLoaderTrain(IterableDataset):
         if self.sampler and self.sampler.reach_end() and self.aval_count == 0:
             raise StopIteration
         if self.enable_prefetch:
+            # print(f"!!!!!!!!!!!! get start {self.aval_count}")
             next_batch = self.outputs.get()
+            # print(f"!!!!!!!!!!!! get end {self.aval_count}")
+            # print(f"!!!!!!!!!!!! get {next_batch}")
             self.outputs.task_done()
             self.aval_count -= 1
+            # a None object from producer means the end of queue
+            if next_batch is None:
+                raise StopIteration
         else:
             next_batch = self._process(self.sampler.__next__())
         return next_batch
@@ -224,6 +250,7 @@ class DataLoaderTest(DataLoaderTrain):
                  worker_rank,
                  cuda_device_idx,
                  news_index,
+                 user_dict,
                  news_scoring,
                  word_dict,
                  news_bias_scoring=None,
@@ -251,7 +278,15 @@ class DataLoaderTest(DataLoaderTrain):
         self.news_scoring = news_scoring
         self.news_bias_scoring = news_bias_scoring
         self.news_index = news_index
+        self.user_dict = user_dict
         self.word_dict = word_dict
+
+    def start_async(self):
+        self.aval_count = 0
+        self.stopped = False
+        self.outputs = Queue(10)
+        self.pool = ThreadPoolExecutor()
+        self.pool.submit(self._produce)
 
     def start(self):
         self.epoch += 1
@@ -284,13 +319,22 @@ class DataLoaderTest(DataLoaderTrain):
             # t0 = time.time()
             for batch in self.sampler:
                 if self.stopped:
+                    # put a None object to communicate the end of queue
+                    self.outputs.put(None)
                     break
+                # print(f"!!!!!!!!!!!! put start {self.aval_count}")
                 context = self._process(batch)
                 self.outputs.put(context)
                 self.aval_count += 1
+                # print(f"!!!!!!!!!!!! put end {self.aval_count}")
                 # logging.info(f"_produce cost:{time.time()-t0}")
                 # t0 = time.time()
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
         except:
+            # put a None object to communicate the end of queue
+            self.outputs.put(None)
+            self.aval_count += 1
             traceback.print_exc(file=sys.stdout)
             self.pool.shutdown(wait=False)
             raise
@@ -299,10 +343,13 @@ class DataLoaderTest(DataLoaderTrain):
         batch_size = len(batch)
         batch = [x.numpy().decode(encoding="utf-8").split("\t") for x in batch]
 
-        impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch = [], [], [], [], [], []
+        impression_id_batch, user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch = [], [], [], [], [], [], []
 
         for line in batch:
             impression_id = line[0]
+
+            user_id = line[1]
+            user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -312,7 +359,7 @@ class DataLoaderTest(DataLoaderTrain):
 
             sample_news = self.trans_to_nindex([i.split('-')[0] for i in line[4].split()])
             # validation(dev) set has label '<news_id>_(1 for click and 0 for non-click)'
-            # test set has no label '<news_id> without _(1 for click and 0 for non-click)', put a dummy label -1      
+            # test set has no label '<news_id> without _(1 for click and 0 for non-click)', put a dummy label -1
             labels = [int(i.split('-')[1]) if len(i.split('-')) > 1 else -1 for i in line[4].split()]
 
             news_feature = self.news_scoring[sample_news]
@@ -322,6 +369,7 @@ class DataLoaderTest(DataLoaderTrain):
                 news_bias = [0] * len(sample_news)
 
             impression_id_batch.append(impression_id)
+            user_id_batch.append(user_id)
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
             news_feature_batch.append(news_feature)
@@ -329,13 +377,15 @@ class DataLoaderTest(DataLoaderTrain):
             label_batch.append(np.array(labels))
 
         if self.enable_gpu:
+            user_id_batch = torch.LongTensor(user_id_batch).cuda()
             user_feature_batch = torch.FloatTensor(user_feature_batch).cuda()
             log_mask_batch = torch.FloatTensor(log_mask_batch).cuda()
         else:
+            user_id_batch = torch.LongTensor(user_id_batch)
             user_feature_batch = torch.FloatTensor(user_feature_batch)
             log_mask_batch = torch.FloatTensor(log_mask_batch)
 
-        return impression_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
+        return impression_id_batch, user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, news_bias_batch, label_batch
 
 
 class NewsDataset(Dataset):
@@ -368,7 +418,7 @@ def test_iterator(model, valid_dir, args, tokenizer):
     news_category, news_domain, news_subcategory = get_doc_input_bert(
         news, news_index, category_dict, domain_dict, subcategory_dict, args)
 
-    word_dict = None
+    word_dict, user_dict = None, None
     # args.enable_hvd = False
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
@@ -400,7 +450,9 @@ def test_iterator(model, valid_dir, args, tokenizer):
     dev_dataloader = DataLoaderTest(
         news_index=news_index,
         news_scoring=news_scoring,
+        user_dict=user_dict,
         word_dict=word_dict,
+        news_bias_scoring=None,
         data_dir=valid_dir,
         filename_pat=args.filename_pat,
         args=args,
@@ -433,7 +485,7 @@ def train_iterator(train_dir, args, tokenizer):
     news_category, news_domain, news_subcategory = get_doc_input_bert(
         news, news_index, category_dict, domain_dict, subcategory_dict, args)
 
-    word_dict = None
+    word_dict, user_dict = None, None
     # args.enable_hvd = False
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
@@ -447,6 +499,7 @@ def train_iterator(train_dir, args, tokenizer):
     dataloader = DataLoaderTrain(
         news_index=news_index,
         news_combined=news_combined,
+        user_dict=user_dict,
         word_dict=word_dict,
         data_dir=train_dir,
         filename_pat=args.filename_pat,
