@@ -106,7 +106,7 @@ def train(args):
         )
 
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
-    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), "news_cache.pkl")
+    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), "news_cache_train.pkl")
     if os.path.exists(news_cache_path):
         news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
     else:
@@ -245,9 +245,9 @@ def train(args):
                         hvd_rank, cnt * args.batch_size, loss.data,
                         accuracy))
 
-            # save model minibatch
+            # save model for every num of save steps
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
-            if hvd_rank == 0 and cnt % args.save_steps == 0:
+            def save_model(LOSS, ACC, eva=True):
                 ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
                 torch.save(
                     {
@@ -259,38 +259,28 @@ def train(args):
                         'subcategory_dict': subcategory_dict
                     }, ckpt_path)
                 logging.info(f"Model saved to {ckpt_path}")
-                write_history(LOSS, ACC, outfile)
-                LOSS, ACC = [], []
-                logging.info(f"Training history saved to {outfile}")
+                # save history
+                if len(LOSS) != 0:
+                    write_history(LOSS, ACC, outfile)
+                    LOSS, ACC = [], []
+                    logging.info(f"Training history saved to {outfile}")
+
+                # evaluate the model for each save
+                if eva:
+                    args.test_dir = 'dev'
+                    model.eval()
+                    torch.set_grad_enabled(False)
+                    metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
+                    model.train()
+                    torch.set_grad_enabled(True)
+            if hvd_rank == 0 and cnt % args.save_steps == 0:
+                save_model(LOSS, ACC, cnt != 0)
 
         logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
 
         # save model last of epoch
         if hvd_rank == 0:
-            ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
-            torch.save(
-                {
-                    'model_state_dict': model.state_dict(),
-                    'user_dict': user_dict,
-                    'category_dict': category_dict,
-                    'word_dict': word_dict,
-                    'domain_dict': domain_dict,
-                    'subcategory_dict': subcategory_dict
-                }, ckpt_path)
-            logging.info(f"Model saved to {ckpt_path}")
-            # save history last of epoch
-            if len(LOSS) != 0:
-                write_history(LOSS, ACC, outfile)
-                LOSS, ACC = [], []
-                logging.info(f"Training history saved to {outfile}")
-
-            # evaluate the model for each epoch
-            args.test_dir = 'dev'
-            model.eval()
-            torch.set_grad_enabled(False)        
-            test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
-            model.train()
-            torch.set_grad_enabled(True)
+            save_model(LOSS, ACC)
 
     dataloader.join()
 
@@ -346,12 +336,18 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         model.eval()
         torch.set_grad_enabled(False)
 
-    news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
-        os.path.join(os.path.expanduser(args.root_data_dir),
-                    f'{args.dataset}/{args.test_dir}/news.tsv'), 
-        args,
-        tokenizer
-    )
+    # save 1~2 minutes time, manually delete the cache file if cache is outdated
+    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.test_dir}.pkl")
+    if os.path.exists(news_cache_path):
+        news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
+    else:
+        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+            os.path.join(os.path.expanduser(args.root_data_dir),
+                        f'{args.dataset}/{args.train_dir}/news.tsv'), 
+            args,
+            tokenizer
+        )
+        pickle.dump((news, news_index, category_dict, domain_dict, subcategory_dict), open(news_cache_path, "wb"))
 
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
@@ -425,7 +421,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     count = 0
 
     outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
-    def print_metrics(hvd_local_rank, cnt, x):
+    def print_metrics(hvd_local_rank, cnt, x, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
             '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
         logging.info(metrics)
@@ -434,7 +430,9 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
             with open(outfile_metrics, 'a') as out_file:
                 out_file.write(metrics + '\n')
             logging.info(f"Saved metrics to {outfile_metrics}")
-        write_tsv(metrics)
+        if save:
+            write_tsv(metrics)
+        return metrics
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
@@ -494,7 +492,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
 
             if cnt % args.log_steps == 0:
                 # print_metrics(hvd_rank, cnt * args.batch_size, [1.0])
-                print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+                print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]), save=False)
 
             if cnt % args.save_steps == 0:
                 if len(SCORE) > 0:
@@ -514,9 +512,11 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
 
     # print and save metrics
     logging.info("Print final metrics")
-    print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    final_metrics = print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     logging.info(f"Time taken: {time.time() - start_time}")
+
+    return final_metrics
 
 
 if __name__ == "__main__":
