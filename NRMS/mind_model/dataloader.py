@@ -353,7 +353,7 @@ class DataLoaderTest(DataLoaderTrain):
             impression_id = line[0]
 
             user_id = line[1]
-            #user_id = self.trans_to_uindex([user_id])
+            user_id = self.trans_to_uindex([user_id])
 
             click_docs = line[3].split()
 
@@ -465,7 +465,7 @@ def test_iterator(model, valid_dir, args, tokenizer):
         worker_rank=hvd_rank,
         cuda_device_idx=hvd_local_rank,
         enable_prefetch=True,
-        enable_shuffle=True,
+        enable_shuffle=False,
         enable_gpu=args.enable_gpu,
     )
     return {"iterator": dev_dataloader,
