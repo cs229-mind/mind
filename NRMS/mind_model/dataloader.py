@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset
-from streaming import StreamSampler, StreamSamplerTest
-import utils
+from .streaming import StreamSampler, StreamSamplerTest
+from . import utils
 from .preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
 
 def news_sample(news, ratio):
