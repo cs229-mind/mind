@@ -11,7 +11,7 @@ from torch.utils.data import IterableDataset
 from .streaming import StreamSampler, StreamSamplerTest
 from . import utils
 from .preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import os
 
 def news_sample(news, ratio):
