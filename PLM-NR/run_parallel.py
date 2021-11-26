@@ -74,9 +74,9 @@ def test(args):
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
     news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.test_dir}.pkl")
     if os.path.exists(news_cache_path):
-        news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
+        news, news_index, _, _, _ = pickle.load(open(news_cache_path, "rb"))
     else:
-        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+        news, news_index, _, _, _ = read_news_bert(
             os.path.join(os.path.expanduser(args.root_data_dir),
                         f'{args.dataset}/{args.test_dir}/news.tsv'), 
             args,
