@@ -72,7 +72,7 @@ def test(args):
     torch.set_grad_enabled(False)
 
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
-    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.test_dir}.pkl")
+    news_cache_path = os.path.join(os.path.expanduser(args.root_data_dir), f'{args.dataset}/{args.test_dir}/news_cache.pkl')
     if os.path.exists(news_cache_path):
         news, news_index, _, _, _ = pickle.load(open(news_cache_path, "rb"))
     else:
@@ -159,7 +159,7 @@ def test(args):
     nDCG10 = []
     SCORE = []
 
-    outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
+    outfile_metrics = os.path.join(os.path.expanduser(args.model_dir), "metrics_{}_{}_{}.tsv".format(ckpt_path.rsplit('/',1)[1].rsplit('.',1)[0], datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def print_metrics(hvd_local_rank, cnt, x, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
             '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
@@ -261,7 +261,7 @@ def test(args):
         score[1] = (ranks + 1).tolist()
 
     # save the prediction result
-    outfile_prediction = os.path.join("./model", "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
+    outfile_prediction = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}_{}.tsv".format(ckpt_path.rsplit('/',1)[1].rsplit('.',1)[0], datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def write_tsv(score):
         with open(outfile_prediction, 'wt') as out_file:
             tsv_writer = csv.writer(out_file, delimiter='\t')

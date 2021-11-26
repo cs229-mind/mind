@@ -105,7 +105,7 @@ def train(args):
         )
 
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
-    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.train_dir}.pkl")
+    news_cache_path = os.path.join(os.path.expanduser(args.root_data_dir), f'{args.dataset}/{args.train_dir}/news_cache.pkl')
     if os.path.exists(news_cache_path):
         news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
     else:
@@ -339,7 +339,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         torch.set_grad_enabled(False)
 
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
-    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.test_dir}.pkl")
+    news_cache_path = os.path.join(os.path.expanduser(args.root_data_dir), f'{args.dataset}/{args.test_dir}/news_cache.pkl')
     if os.path.exists(news_cache_path):
         news, news_index, _, _, _ = pickle.load(open(news_cache_path, "rb"))
     else:
@@ -422,7 +422,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     AUC, MRR, nDCG5, nDCG10, SCORE = [], [], [], [], []
     count = 0
 
-    outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
+    outfile_metrics = os.path.join(os.path.expanduser(args.model_dir), "metrics_{}_{}_{}.tsv".format(ckpt_path.rsplit('/',1)[1].rsplit('.',1)[0], datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def print_metrics(hvd_local_rank, cnt, x, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
             '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
@@ -439,7 +439,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
 
-    outfile_prediction = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
+    outfile_prediction = os.path.join(os.path.expanduser(args.model_dir), "prediction_{}_{}_{}.tsv".format(ckpt_path.rsplit('/',1)[1].rsplit('.',1)[0], datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
     def write_score(SCORE):
         # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
         for score in tqdm(SCORE):

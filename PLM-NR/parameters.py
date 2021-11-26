@@ -29,9 +29,9 @@ def parse_args():
         default='test',
     )
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
-    parser.add_argument("--scoring_output", type=str, default="202111210537*.tsv")
+    parser.add_argument("--scoring_output", type=str, default="epoch-1-0--0.55456-0.76515*.tsv")
     parser.add_argument("--model_dir", type=str, default='~/mind/PLM-NR/model')
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--neg_ratio", type=int, default=1)
     parser.add_argument("--enable_slate_data", type=utils.str2bool, default=True)
     parser.add_argument("--slate_length", type=int, default=2)  # slate_length - neg_ratio = pos_ratio, so slate_length must > neg_ratio
