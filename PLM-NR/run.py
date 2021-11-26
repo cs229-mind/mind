@@ -79,7 +79,7 @@ def train(args):
 
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
-    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True, output_attentions=True, use_cache=True)
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
 
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
@@ -93,9 +93,10 @@ def train(args):
         else:  #args.fineune_options == -12:
             continue
 
-    if args.enable_incremental and ckpt_path is not None:
-        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
-        user_dict = checkpoint['user_dict']
+    # save 1~2 minutes time, manually delete the cache file if cache is outdated
+    user_cache_path = os.path.join(os.path.expanduser(args.root_data_dir), f'{args.dataset}/{args.train_dir}/user_cache.pkl')
+    if os.path.exists(user_cache_path):
+        user_dict = pickle.load(open(user_cache_path, "rb"))
     else:
         user_dict = read_user(
             os.path.join(os.path.expanduser(args.root_data_dir),
@@ -103,6 +104,7 @@ def train(args):
             args.filename_pat,
             args
         )
+        pickle.dump(user_dict, open(user_cache_path, "wb"))
 
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
     news_cache_path = os.path.join(os.path.expanduser(args.root_data_dir), f'{args.dataset}/{args.train_dir}/news_cache.pkl')
@@ -151,7 +153,7 @@ def train(args):
             subcategory_dict = checkpoint['subcategory_dict']
             word_dict = checkpoint['word_dict']
             domain_dict = checkpoint['domain_dict']
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model.load_state_dict(checkpoint['model_state_dict'], strict=False)
             logging.info(f"Model loaded from {ckpt_path} for incremental training")
 
     lr_scaler = hvd.local_size()
@@ -198,11 +200,11 @@ def train(args):
         enable_gpu=args.enable_gpu,
     )
 
+    LOSS, ACC, VERBOSE = [], [], []
     outfile = os.path.join(os.path.expanduser(args.model_dir), "history_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
-
-    def write_history(LOSS, ACC, outfile):
+    def write_history(LOSS, ACC, VERBOSE, outfile):
         # format the data: loss, acc
-        data = [(round(float(loss), 5), round(float(acc), 5)) for score, acc in zip(LOSS, ACC)]
+        data = [(round(float(loss), 5), round(float(acc), 5), verbose) for score, acc, verbose in zip(LOSS, ACC, VERBOSE)]
         # save the prediction result
         def write_tsv(data):
             with open(outfile, 'a') as out_file:
@@ -211,7 +213,6 @@ def train(args):
         write_tsv(data)
 
     logging.info('Training...')
-    LOSS, ACC = [], []
     for ep in range(args.epochs):
         loss = 0.0
         accuracy = 0.0
@@ -239,14 +240,15 @@ def train(args):
             if cnt % args.log_steps == 0:
                 LOSS.append(loss.data)
                 ACC.append(accuracy)
+                VERBOSE.append('[{}] Ed: {}-{}-{}'.format(hvd_rank, ep, cnt * args.batch_size, datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
                 logging.info(
-                    '[{}] Ed: {}, train_loss: {:.5f}, acc: {:.5f}'.format(
-                        hvd_rank, cnt * args.batch_size, loss.data,
+                    '[{}] Ed: {} {}, train_loss: {:.5f}, acc: {:.5f}'.format(
+                        hvd_rank, ep, cnt * args.batch_size, loss.data,
                         accuracy))
 
             # save model for every num of save steps
             logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
-            def save_model(LOSS, ACC, eva=True):
+            def save_model(LOSS, ACC, VERBOSE, eva=True):
                 ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
                 torch.save(
                     {
@@ -260,8 +262,8 @@ def train(args):
                 logging.info(f"Model saved to {ckpt_path}")
                 # save history
                 if len(LOSS) != 0:
-                    write_history(LOSS, ACC, outfile)
-                    LOSS, ACC = [], []
+                    write_history(LOSS, ACC, VERBOSE, outfile)
+                    LOSS, ACC, VERBOSE = [], [], []
                     logging.info(f"Training history saved to {outfile}")
 
                 # evaluate the model for each save
@@ -275,9 +277,9 @@ def train(args):
                     model.train()
                     torch.set_grad_enabled(True)
                     args.test_dir = prev_test_dir
-                    logging.info(f"Evaluation on data in dir {args.test_dir} finished")
-            if hvd_rank == 0 and cnt % args.save_steps == 0:
-                save_model(LOSS, ACC, cnt != 0)
+                    logging.info(f"Evaluation on data in dir {args.test_dir} finished with final metrics: {metrics}")
+            if hvd_rank == 0 and cnt % args.save_steps == 0 and cnt != 0:
+                save_model(LOSS, ACC, VERBOSE)
 
         logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
 
@@ -460,6 +462,8 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
             # logging.info(f"start new batch {cnt}")
             count = cnt
 
+            if count == 2:
+                break
             if args.enable_gpu:
                 user_ids = user_ids.cuda(non_blocking=True)
                 log_vecs = log_vecs.cuda(non_blocking=True)
@@ -498,7 +502,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
 
             if cnt % args.save_steps == 0:
                 if len(SCORE) > 0:
-                    logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
+                    logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile_prediction))
                     write_score(SCORE)
                     SCORE = []
 
@@ -508,7 +512,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
 
     # save the last batch of scores
     if len(SCORE) > 0:
-        logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile))
+        logging.info("[{}] Ed: {}: saving {} lines to {}".format(hvd_local_rank, cnt, len(SCORE), outfile_prediction))
         write_score(SCORE)
         SCORE = []
 

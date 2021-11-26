@@ -94,8 +94,8 @@ class StreamReader:
         sess_label = tf.strings.split(sess, '-').values
         # tf.print(sess_label)
         sess_poss = tf.gather(sess_label, tf.where(tf.equal(sess_label, '1'))-1)
+        # tf.print(sess_poss)
         # tf.print(tf.shape(sess_poss))
-        # tf.print(tf.shape(sess_poss)[1])
         record = tf.expand_dims(record, axis=0)
         if self.args.enable_slate_data:
             poss_ratio = self.args.slate_length - self.args.neg_ratio

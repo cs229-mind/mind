@@ -68,7 +68,7 @@ def dump_args(args):
 
 def acc(y_true, y_hat):
     if y_true.shape == y_hat.shape:
-        return torch.mean(dcg(y_true, y_hat))  
+        return torch.mean(ndcg_score(y_true, y_hat))
     y_hat = torch.argmax(y_hat, dim=-1)
     tot = y_true.shape[0]
     hit = torch.sum(y_true == y_hat)
@@ -135,7 +135,7 @@ def latest_checkpoint(directory):
         return list(sorted(os.listdir(directory), key=mtime))
 
     all_files = sorted_ls(directory)
-    all_checkpoints = [file_name for file_name in all_files if 'epoch' in file_name]
+    all_checkpoints = [file_name for file_name in all_files if file_name.startswith('epoch')]
     if len(all_checkpoints) == 0:
         return None
     logging.info(f'found latest_checkpoint in directory {directory} : {all_checkpoints[-1]}')

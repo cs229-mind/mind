@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import os
 import math
 from ltr.loss_func import get_loss_func
+from fastformer.fastformer import FastformerEncoder
 
 
 class AdditiveAttention(nn.Module):
@@ -128,16 +129,23 @@ class TextEncoder(torch.nn.Module):
                  num_attention_heads,
                  query_vector_dim,
                  dropout_rate,
-                 enable_gpu=True):
+                 enable_gpu=True,
+                 args=None):
         super(TextEncoder, self).__init__()
         #self.word_embedding = word_embedding
+        self.args = args
         self.bert_model = bert_model
         self.dropout_rate = dropout_rate
-        self.multihead_attention = MultiHeadAttention(word_embedding_dim,
-                                                      num_attention_heads, 20,
-                                                      20, enable_gpu)
-        self.additive_attention = AdditiveAttention(num_attention_heads*20,
-                                                    query_vector_dim)
+        if self.args.enable_fastformer_text:
+            #TODO make intermediate_size configurable
+            self.fastformer_encoder = FastformerEncoder(args, hidden_size=word_embedding_dim, intermediate_size=word_embedding_dim)
+            self.reduce_dim_linear = nn.Linear(word_embedding_dim, num_attention_heads*20)
+        else:
+            self.multihead_attention = MultiHeadAttention(word_embedding_dim,
+                                                        num_attention_heads, 20,
+                                                        20, enable_gpu)
+            self.additive_attention = AdditiveAttention(num_attention_heads*20,
+                                                        query_vector_dim)
 
     def forward(self, text, mask=None):
         """
@@ -153,17 +161,23 @@ class TextEncoder(torch.nn.Module):
         text_type = torch.narrow(text, 1, num_words, num_words)
         text_attmask = torch.narrow(text, 1, num_words*2, num_words)
         word_emb = self.bert_model(text_ids, text_type, text_attmask)[2][8]
-        text_vector = F.dropout(word_emb,
-                                p=self.dropout_rate,
-                                training=self.training)
-        # batch_size, num_words_text, word_embedding_dim
-        multihead_text_vector = self.multihead_attention(
-            text_vector, text_vector, text_vector, mask)
-        multihead_text_vector = F.dropout(multihead_text_vector,
-                                          p=self.dropout_rate,
-                                          training=self.training)
-        # batch_size, word_embedding_dim
-        text_vector = self.additive_attention(multihead_text_vector, mask)
+        if mask is None:
+            mask = text_attmask
+        if self.args.enable_fastformer_text:
+            text_vector = self.fastformer_encoder(word_emb, mask)
+            text_vector = self.reduce_dim_linear(text_vector)
+        else:
+            text_vector = F.dropout(word_emb,
+                                    p=self.dropout_rate,
+                                    training=self.training)
+            # batch_size, num_words_text, word_embedding_dim
+            multihead_text_vector = self.multihead_attention(
+                text_vector, text_vector, text_vector, mask)
+            multihead_text_vector = F.dropout(multihead_text_vector,
+                                            p=self.dropout_rate,
+                                            training=self.training)
+            # batch_size, word_embedding_dim
+            text_vector = self.additive_attention(multihead_text_vector, mask)
         return text_vector
 
 
@@ -214,7 +228,7 @@ class NewsEncoder(torch.nn.Module):
             TextEncoder(bert_model,
                         args.word_embedding_dim,
                         args.num_attention_heads, args.news_query_vector_dim,
-                        args.drop_rate, args.enable_gpu)
+                        args.drop_rate, args.enable_gpu, args)
         })
 
         self.newsname=[name for name in sorted(list(set(args.news_attributes) & set(text_encoders_candidates)))]
@@ -283,8 +297,11 @@ class UserEncoder(torch.nn.Module):
         super(UserEncoder, self).__init__()
         self.args = args
         self.user_dict_size = user_dict_size
-        self.news_additive_attention = AdditiveAttention(
-            args.news_dim, args.user_query_vector_dim)
+        if self.args.enable_fastformer_text:
+            self.news_fastformer_encoder = FastformerEncoder(args, hidden_size=args.news_dim, intermediate_size=args.user_query_vector_dim)
+        else:
+            self.news_additive_attention = AdditiveAttention(
+                args.news_dim, args.user_query_vector_dim)
         if args.use_padded_news_embedding:
             # self.news_padded_news_embedding = nn.Embedding(1, args.news_dim)
             self.pad_doc = nn.Parameter(torch.empty(1, args.news_dim).uniform_(-1, 1)).type(torch.FloatTensor)
@@ -312,9 +329,7 @@ class UserEncoder(torch.nn.Module):
             self.final_attention = AdditiveAttention(
                 args.news_dim, args.user_query_vector_dim)
 
-    def _process_news(self, vec, mask, pad_doc,
-                    additive_attention, use_mask=False, 
-                    use_padded_embedding=False):
+    def _process_news(self, vec, mask, pad_doc, use_mask=False, use_padded_embedding=False):
         assert not (use_padded_embedding and use_mask), 'Conflicting config'
         if use_padded_embedding:
             # batch_size, maxlen, dim
@@ -323,9 +338,13 @@ class UserEncoder(torch.nn.Module):
                                          batch_size, self.args.user_log_length , self.args.news_dim)
             # batch_size, maxlen, dim
             vec = vec * mask.unsqueeze(2).expand(-1, -1, self.args.news_dim) + padding_doc * (1 - mask.unsqueeze(2).expand(-1, -1, self.args.news_dim))
+
         # batch_size, news_dim
-        vec = additive_attention(vec,
-                                 mask if use_mask else None)
+        if self.args.enable_fastformer_text:
+            vec = self.news_fastformer_encoder(vec, mask if use_mask else None)
+        else:
+            vec = self.news_additive_attention(vec,
+                                    mask if use_mask else None)
         return vec
 
 
@@ -338,8 +357,7 @@ class UserEncoder(torch.nn.Module):
         if 'click_docs' in self.user_news_history:
             # batch_size, news_dim
             log_vec = self._process_news(log_vec, log_mask, self.pad_doc,
-                                        self.news_additive_attention, self.args.user_log_mask,
-                                        self.args.use_padded_news_embedding)
+                                        self.args.user_log_mask, self.args.use_padded_news_embedding)
             user_log_vecs.append(log_vec)
 
         element_vectors = []
@@ -399,7 +417,10 @@ class ModelBert(torch.nn.Module):
         ids_length = input_ids.size(2)
         input_ids = input_ids.view(-1, ids_length)
         news_vec = self.news_encoder(input_ids)
-        news_vec = news_vec.view(-1, self.args.slate_length, self.args.news_dim)
+        if self.args.enable_slate_data:
+            news_vec = news_vec.view(-1, self.args.slate_length, self.args.news_dim)
+        else:
+            news_vec = news_vec.view(-1, 1 + self.args.neg_ratio, self.args.news_dim)
 
         # batch_size, news_dim
         log_ids = log_ids.view(-1, ids_length)
