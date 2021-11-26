@@ -160,7 +160,7 @@ def test(args):
     SCORE = []
 
     outfile_metrics = os.path.join("./model", "metrics_{}_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
-    def print_metrics(hvd_local_rank, cnt, x):
+    def print_metrics(hvd_local_rank, cnt, x, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
             '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
         logging.info(metrics)
@@ -169,7 +169,9 @@ def test(args):
             with open(outfile_metrics, 'a') as out_file:
                 out_file.write(metrics + '\n')
             logging.info(f"Saved metrics to {outfile_metrics}")
-        write_tsv(metrics)
+        if save:
+            write_tsv(metrics)
+        return metrics
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
@@ -241,7 +243,7 @@ def test(args):
         #                             model))
 
         if cnt % args.log_steps == 0:
-            print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+            print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]), save=False)
 
     # stop scoring
     dataloader.join()
