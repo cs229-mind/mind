@@ -105,7 +105,7 @@ def train(args):
         )
 
     # save 1~2 minutes time, manually delete the cache file if cache is outdated
-    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), "news_cache_train.pkl")
+    news_cache_path = os.path.join(os.path.expanduser(args.model_dir), f"news_cache_{args.train_dir}.pkl")
     if os.path.exists(news_cache_path):
         news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
     else:
@@ -345,7 +345,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     else:
         news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
             os.path.join(os.path.expanduser(args.root_data_dir),
-                        f'{args.dataset}/{args.train_dir}/news.tsv'), 
+                        f'{args.dataset}/{args.test_dir}/news.tsv'), 
             args,
             tokenizer
         )
