@@ -38,7 +38,6 @@ class DataLoaderTest(DataLoaderTrain):
         self.data_dir = data_dir
         self.filename_pat = filename_pat
 
-        self.npratio = args.npratio
         self.user_log_length = args.user_log_length
         self.batch_size = args.batch_size
 
@@ -51,6 +50,7 @@ class DataLoaderTest(DataLoaderTrain):
         self.enable_prefetch = enable_prefetch
         self.enable_shuffle = enable_shuffle
         self.enable_gpu = enable_gpu
+        self.args = args
         self.epoch = -1
 
         self.news_scoring = news_scoring
@@ -69,6 +69,7 @@ class DataLoaderTest(DataLoaderTrain):
             worker_size=self.worker_size,
             enable_shuffle=self.enable_shuffle,
             shuffle_seed=self.epoch,  # epoch id as shuffle random seed
+            args=self.args
         )
         self.sampler.__iter__()
 
@@ -93,6 +94,7 @@ class DataLoaderTest(DataLoaderTrain):
                 worker_size=self.worker_size,
                 enable_shuffle=self.enable_shuffle,
                 shuffle_seed=self.epoch,  # epoch id as shuffle random seed
+                args=self.args
             )
             # t0 = time.time()
             for batch in self.sampler:

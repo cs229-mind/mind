@@ -4,7 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 import os
 import math
-from ltr_loss.loss_func import get_loss_func
+from ltr.loss_func import get_loss_func
 
 
 class AdditiveAttention(nn.Module):
@@ -399,7 +399,7 @@ class ModelBert(torch.nn.Module):
         ids_length = input_ids.size(2)
         input_ids = input_ids.view(-1, ids_length)
         news_vec = self.news_encoder(input_ids)
-        news_vec = news_vec.view(-1, 1 + self.args.npratio, self.args.news_dim)
+        news_vec = news_vec.view(-1, self.args.slate_length, self.args.news_dim)
 
         # batch_size, news_dim
         log_ids = log_ids.view(-1, ids_length)

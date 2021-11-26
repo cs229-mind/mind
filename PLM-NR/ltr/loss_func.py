@@ -5,6 +5,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.nn import BCEWithLogitsLoss
 
 
 def get_loss_func(args):
@@ -24,32 +25,83 @@ def get_loss_func(args):
         raise ValueError(f'loss {args.ltr_loss} is not supported!')                                
 
 
+PADDED_Y_VALUE = -1
+DEFAULT_EPS = 1e-10
+
+
 def reshape(y_pred, y_true):
-    device = y_pred.device 
-    return F.one_hot(y_true, y_pred.shape[1]).type(torch.FloatTensor).to(device)
+    device = y_pred.device
+    if y_true.shape == y_pred.shape:
+        return y_true.type(torch.FloatTensor).to(device)
+    else:
+        return F.one_hot(y_true, y_pred.shape[1]).type(torch.FloatTensor).to(device)
 
 
-def pointwise(y_pred, y_true):
+def pointwise(y_pred, y_true, padded_value_indicator=PADDED_Y_VALUE):
     """
     Pointwise loss for binary ground truth data
     """
+    device = y_pred.device
     y_pred = y_pred.clone()
     y_true = y_true.clone()
     y_true = reshape(y_pred, y_true)
 
-    return F.binary_cross_entropy_with_logits(y_pred, y_true)
+    mask = y_true == padded_value_indicator
+    valid_mask = y_true != padded_value_indicator
+    ls = BCEWithLogitsLoss(reduction='none')(y_pred, y_true)
+    ls[mask] = 0.0
+
+    document_loss = torch.sum(ls, dim=-1)
+    sum_valid = torch.sum(valid_mask, dim=-1).type(torch.float32) > torch.tensor(0.0, dtype=torch.float32, device=device)
+
+    loss_output = torch.sum(document_loss) / torch.sum(sum_valid)
+
+    return loss_output
 
 
 def softmax(y_pred, y_true):
     """
     Listwise loss for single binary ground truth data with softmax
     """
+    if y_true.shape == y_pred.shape:
+        y_true = y_true.argmax(dim=1)  # only one 1 and all the rest are 0!
     return F.cross_entropy(y_pred, y_true)
 
 
-PADDED_Y_VALUE = -1
-DEFAULT_EPS = 1e-10
-def pairwise(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE, weighing_scheme=None, k=None, sigma=1., mu=10.,
+def _ndcgLoss1_scheme(G, D, *args):
+    return (G / D)[:, :, None]
+
+
+def _ndcgLoss2_scheme(G, D, *args):
+    pos_idxs = torch.arange(1, G.shape[1] + 1, device=G.device)
+    delta_idxs = torch.abs(pos_idxs[:, None] - pos_idxs[None, :])
+    deltas = torch.abs(torch.pow(torch.abs(D[0, delta_idxs - 1]), -1.) - torch.pow(torch.abs(D[0, delta_idxs]), -1.))
+    deltas.diagonal().zero_()
+
+    return deltas[None, :, :] * torch.abs(G[:, :, None] - G[:, None, :])
+
+
+def _lambdaRank_scheme(G, D, *args):
+    return torch.abs(torch.pow(D[:, :, None], -1.) - torch.pow(D[:, None, :], -1.)) * torch.abs(G[:, :, None] - G[:, None, :])
+
+
+def _ndcgLoss2PP_scheme(G, D, *args):
+    return args[0] * _ndcgLoss2_scheme(G, D) + _lambdaRank_scheme(G, D)
+
+
+def _rankNet_scheme(G, D, *args):
+    return 1.
+
+
+def _rankNetWeightedByGTDiff_scheme(G, D, *args):
+    return torch.abs(args[1][:, :, None] - args[1][:, None, :])
+
+
+def _rankNetWeightedByGTDiffPowed_scheme(G, D, *args):
+    return torch.abs(torch.pow(args[1][:, :, None], 2) - torch.pow(args[1][:, None, :], 2))
+
+
+def pairwise(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VALUE, weighing_scheme="_lambdaRank_scheme", k=None, sigma=1., mu=10.,
                reduction="sum", reduction_log="binary"):
     """
     LambdaLoss framework for LTR losses implementations, introduced in "The LambdaLoss Framework for Ranking Metric Optimization".
@@ -127,39 +179,6 @@ def pairwise(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y_VA
     return loss
 
 
-    def ndcgLoss1_scheme(G, D, *args):
-        return (G / D)[:, :, None]
-
-
-    def ndcgLoss2_scheme(G, D, *args):
-        pos_idxs = torch.arange(1, G.shape[1] + 1, device=G.device)
-        delta_idxs = torch.abs(pos_idxs[:, None] - pos_idxs[None, :])
-        deltas = torch.abs(torch.pow(torch.abs(D[0, delta_idxs - 1]), -1.) - torch.pow(torch.abs(D[0, delta_idxs]), -1.))
-        deltas.diagonal().zero_()
-
-        return deltas[None, :, :] * torch.abs(G[:, :, None] - G[:, None, :])
-
-
-    def lambdaRank_scheme(G, D, *args):
-        return torch.abs(torch.pow(D[:, :, None], -1.) - torch.pow(D[:, None, :], -1.)) * torch.abs(G[:, :, None] - G[:, None, :])
-
-
-    def ndcgLoss2PP_scheme(G, D, *args):
-        return args[0] * ndcgLoss2_scheme(G, D) + lambdaRank_scheme(G, D)
-
-
-    def rankNet_scheme(G, D, *args):
-        return 1.
-
-
-    def rankNetWeightedByGTDiff_scheme(G, D, *args):
-        return torch.abs(args[1][:, :, None] - args[1][:, None, :])
-
-
-    def rankNetWeightedByGTDiffPowed_scheme(G, D, *args):
-        return torch.abs(torch.pow(args[1][:, :, None], 2) - torch.pow(args[1][:, None, :], 2))
-
-
 def cb_ndcg(y_pred, y_true, eps=DEFAULT_EPS, padding=PADDED_Y_VALUE):
     """
     cb_ndcg loss function for binary ground truth data followed the proof in "An Analysis of the Softmax Cross Entropy Loss
@@ -235,7 +254,7 @@ def approx_ndcg(y_pred, y_true, eps=DEFAULT_EPS, padded_value_indicator=PADDED_Y
     return -torch.mean(approx_NDCG)
 
 
-def sinkhorn_scaling(mat, mask=None, tol=1e-6, max_iter=50):
+def _sinkhorn_scaling(mat, mask=None, tol=1e-6, max_iter=50):
     """
     Sinkhorn scaling procedure.
     :param mat: a tensor of square matrices of shape N x M x M, where N is batch size
@@ -295,7 +314,7 @@ def neural_ndcg(y_pred, y_true, padded_value_indicator=PADDED_Y_VALUE, temperatu
         P_hat = _deterministic_neural_sort(y_pred.unsqueeze(-1), tau=temperature, mask=mask, device=device).unsqueeze(0)
 
     # Perform sinkhorn scaling to obtain doubly stochastic permutation matrices
-    P_hat = sinkhorn_scaling(P_hat.view(P_hat.shape[0] * P_hat.shape[1], P_hat.shape[2], P_hat.shape[3]),
+    P_hat = _sinkhorn_scaling(P_hat.view(P_hat.shape[0] * P_hat.shape[1], P_hat.shape[2], P_hat.shape[3]),
                              mask.repeat_interleave(P_hat.shape[0], dim=0), tol=1e-6, max_iter=50)
     P_hat = P_hat.view(int(P_hat.shape[0] / y_pred.shape[0]), y_pred.shape[0], P_hat.shape[1], P_hat.shape[2])
 
@@ -362,7 +381,7 @@ def neural_ndcg_transposed(y_pred, y_true, padded_value_indicator=PADDED_Y_VALUE
         P_hat = _deterministic_neural_sort(y_pred.unsqueeze(-1), tau=temperature, mask=mask, device=device).unsqueeze(0)
 
     # Perform sinkhorn scaling to obtain doubly stochastic permutation matrices
-    P_hat_masked = sinkhorn_scaling(P_hat.view(P_hat.shape[0] * y_pred.shape[0], y_pred.shape[1], y_pred.shape[1]),
+    P_hat_masked = _sinkhorn_scaling(P_hat.view(P_hat.shape[0] * y_pred.shape[0], y_pred.shape[1], y_pred.shape[1]),
                                     mask.repeat_interleave(P_hat.shape[0], dim=0), tol=tol, max_iter=max_iter, device=device)
     P_hat_masked = P_hat_masked.view(P_hat.shape[0], y_pred.shape[0], y_pred.shape[1], y_pred.shape[1])
     discounts = (torch.tensor(1) / torch.log2(torch.arange(y_true.shape[-1], dtype=torch.float) + 2.)).to(device)

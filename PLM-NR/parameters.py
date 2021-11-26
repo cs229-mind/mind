@@ -31,8 +31,10 @@ def parse_args():
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
     parser.add_argument("--scoring_output", type=str, default="202111210537*.tsv")
     parser.add_argument("--model_dir", type=str, default='~/mind/PLM-NR/model')
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--npratio", type=int, default=1)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--neg_ratio", type=int, default=1)
+    parser.add_argument("--enable_slate_data", type=utils.str2bool, default=True)
+    parser.add_argument("--slate_length", type=int, default=2)  # slate_length - neg_ratio = pos_ratio, so slate_length must > neg_ratio
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
     parser.add_argument("--enable_incremental", type=utils.str2bool, default=True)
@@ -44,7 +46,7 @@ def parse_args():
 
     # model training
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--ltr_loss", type=str, default='cb_ndcg', choices=['pointwise', 'pairwise', 'softmax', 'cb_ndcg', 'neural_ndcg'])
+    parser.add_argument("--ltr_loss", type=str, default='softmax', choices=['pointwise', 'pairwise', 'softmax', 'cb_ndcg', 'neural_ndcg'])
     parser.add_argument("--optimizer", type=str, default='AdamW', choices=['Adam', 'AdamW'])
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-2)

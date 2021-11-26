@@ -34,7 +34,7 @@ HOROVOD_WITH_PYTORCH=1 HOROVOD_WITH_TENSORFLOW=1 pip3 install --no-cache-dir hor
 horovodrun -n 3 python3 test.py --check-build
 
 # RUN
-- for training:   
+- for training: horovodrun -n 6 python3 run.py --mode train --batch_size=64
 
 - for evaluation: horovodrun -n 6 python3 run.py --mode test --test_dir 'dev' --batch_size=1024
 

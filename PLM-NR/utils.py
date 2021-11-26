@@ -9,6 +9,7 @@ import multiprocessing
 from spacy.util import minibatch
 from joblib import Parallel, delayed
 from functools import partial
+from ltr.metrics import ndcg, dcg, mrr
 
 
 def word_tokenize(sent):
@@ -66,28 +67,36 @@ def dump_args(args):
 
 
 def acc(y_true, y_hat):
+    if y_true.shape == y_hat.shape:
+        return torch.mean(dcg(y_true, y_hat))  
     y_hat = torch.argmax(y_hat, dim=-1)
     tot = y_true.shape[0]
     hit = torch.sum(y_true == y_hat)
     return hit.data.float() * 1.0 / tot
 
 
-def dcg_score(y_true, y_score, k=10):
-    order = np.argsort(y_score)[::-1]
+def dcg_score(y_true, y_hat, k=10):
+    if y_true.shape == y_hat.shape:
+        return torch.mean(dcg(y_true, y_hat))
+    order = np.argsort(y_hat)[::-1]
     y_true = np.take(y_true, order[:k])
     gains = 2**y_true - 1
     discounts = np.log2(np.arange(len(y_true)) + 2)
     return np.sum(gains / discounts)
 
 
-def ndcg_score(y_true, y_score, k=10):
+def ndcg_score(y_true, y_hat, k=10):
+    if y_true.shape == y_hat.shape:
+        return torch.mean(ndcg(y_true, y_hat))
     best = dcg_score(y_true, y_true, k)
-    actual = dcg_score(y_true, y_score, k)
+    actual = dcg_score(y_true, y_hat, k)
     return actual / best
 
 
-def mrr_score(y_true, y_score):
-    order = np.argsort(y_score)[::-1]
+def mrr_score(y_true, y_hat):
+    if y_true.shape == y_hat.shape:
+        return torch.mean(mrr(y_true, y_hat))    
+    order = np.argsort(y_hat)[::-1]
     y_true = np.take(y_true, order)
     rr_score = y_true / (np.arange(len(y_true)) + 1)
     return np.sum(rr_score) / np.sum(y_true)

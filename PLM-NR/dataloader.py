@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import IterableDataset
 from streaming import StreamSampler, StreamSamplerTest
 import utils
+from ltr.loss_func import PADDED_Y_VALUE
 
 
 def news_sample(news, ratio):
@@ -37,7 +38,6 @@ class DataLoaderTrain(IterableDataset):
         self.data_dir = data_dir
         self.filename_pat = filename_pat
 
-        self.npratio = args.npratio
         self.user_log_length = args.user_log_length
         self.user_attributes = args.user_attributes
         self.batch_size = args.batch_size
@@ -53,6 +53,7 @@ class DataLoaderTrain(IterableDataset):
         self.enable_prefetch = enable_prefetch
         self.enable_shuffle = enable_shuffle
         self.enable_gpu = enable_gpu
+        self.args = args
         self.epoch = -1
 
         self.news_combined = news_combined
@@ -71,6 +72,7 @@ class DataLoaderTrain(IterableDataset):
             enable_shuffle=self.enable_shuffle,
             shuffle_buffer_size=self.shuffle_buffer_size,
             shuffle_seed=self.epoch,  # epoch id as shuffle random seed
+            args=self.args
         )
         self.sampler.__iter__()
 
@@ -110,6 +112,7 @@ class DataLoaderTrain(IterableDataset):
                 worker_size=self.worker_size,
                 enable_shuffle=self.enable_shuffle,
                 shuffle_seed=self.epoch,  # epoch id as shuffle random seed
+                args=self.args
             )
             # t0 = time.time()
             for batch in self.sampler:
@@ -149,7 +152,11 @@ class DataLoaderTrain(IterableDataset):
         batch_size = len(batch)
         #print(batch)
         batch_poss, batch = batch
-        batch_poss = [x.numpy().decode(encoding="utf-8") for x in batch_poss]
+        if self.args.enable_slate_data:
+            batch_poss = [x.numpy().astype('U13') for x in batch_poss]
+        else:
+            batch_poss = [x.numpy().decode(encoding="utf-8") for x in batch_poss]
+
         batch = [x.numpy().decode(encoding="utf-8").split("\t") for x in batch]
         label = 0
         user_id_batch, user_feature_batch, log_mask_batch, news_feature_batch, label_batch = [], [], [], [], []
@@ -168,15 +175,18 @@ class DataLoaderTrain(IterableDataset):
             sess_news = [i.split('-') for i in line[4].split()]
             sess_neg = [i[0] for i in sess_news if i[-1] == '0']
 
-            poss = self.trans_to_nindex([poss])
+            if self.args.enable_slate_data:
+                poss = self.trans_to_nindex(poss)
+            else:
+                poss = self.trans_to_nindex([poss])
             sess_neg = self.trans_to_nindex(sess_neg)
 
             if len(sess_neg) > 0:
                 neg_index = news_sample(list(range(len(sess_neg))),
-                                        self.npratio)
+                                        self.args.neg_ratio)
                 sam_negs = [sess_neg[i] for i in neg_index]
             else:
-                sam_negs = [0] * self.npratio
+                sam_negs = [0] * self.args.neg_ratio
             sample_news = poss + sam_negs
 
             news_feature = self.news_combined[sample_news]
@@ -184,6 +194,10 @@ class DataLoaderTrain(IterableDataset):
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
             news_feature_batch.append(news_feature)
+
+            if self.args.enable_slate_data:
+                label = [1] * len(poss) + [0] * len(sam_negs)
+                label = [l if news_idx != 0 else PADDED_Y_VALUE for l, news_idx in zip(label, sample_news)]
             label_batch.append(label)
 
         if self.enable_gpu:
@@ -260,7 +274,6 @@ class DataLoaderTest(DataLoaderTrain):
         self.data_dir = data_dir
         self.filename_pat = filename_pat
 
-        self.npratio = args.npratio
         self.user_log_length = args.user_log_length
         self.batch_size = args.batch_size
 
@@ -273,6 +286,7 @@ class DataLoaderTest(DataLoaderTrain):
         self.enable_prefetch = enable_prefetch
         self.enable_shuffle = enable_shuffle
         self.enable_gpu = enable_gpu
+        self.args = args
         self.epoch = -1
 
         self.news_scoring = news_scoring
@@ -298,6 +312,7 @@ class DataLoaderTest(DataLoaderTrain):
             worker_size=self.worker_size,
             enable_shuffle=self.enable_shuffle,
             shuffle_seed=self.epoch,  # epoch id as shuffle random seed
+            args=self.args
         )
         self.sampler.__iter__()
 
@@ -315,6 +330,7 @@ class DataLoaderTest(DataLoaderTrain):
                 worker_size=self.worker_size,
                 enable_shuffle=self.enable_shuffle,
                 shuffle_seed=self.epoch,  # epoch id as shuffle random seed
+                args=self.args
             )
             # t0 = time.time()
             for batch in self.sampler:

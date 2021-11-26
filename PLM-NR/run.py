@@ -70,7 +70,6 @@ def train(args):
         import horovod.torch as hvd
 
     if args.load_ckpt_train is not None:
-        #TODO: choose ckpt_path
         ckpt_path = utils.get_checkpoint(os.path.join(os.path.expanduser(args.model_dir), args.load_ckpt_train))
     else:
         ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
@@ -267,12 +266,16 @@ def train(args):
 
                 # evaluate the model for each save
                 if eva:
+                    prev_test_dir = args.test_dir
                     args.test_dir = 'dev'
+                    logging.info(f"Evaluation on data in dir {args.test_dir} started")
                     model.eval()
                     torch.set_grad_enabled(False)
                     metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
                     model.train()
                     torch.set_grad_enabled(True)
+                    args.test_dir = prev_test_dir
+                    logging.info(f"Evaluation on data in dir {args.test_dir} finished")
             if hvd_rank == 0 and cnt % args.save_steps == 0:
                 save_model(LOSS, ACC, cnt != 0)
 
@@ -295,7 +298,6 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         args.enable_hvd, args.enable_gpu)
 
     if args.load_ckpt_test is not None:
-        #TODO: choose ckpt_path
         ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_test)
     else:
         ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))

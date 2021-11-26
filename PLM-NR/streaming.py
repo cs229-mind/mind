@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 # tf.data.experimental.enable_debug_mode()
 import utils
+from parameters import parse_args
 
 
 def get_files(dirname, filename_pat="*", recursive=False):
@@ -22,6 +23,12 @@ def get_files(dirname, filename_pat="*", recursive=False):
             files.append(path)
     print(f'files: {files}')
     return files
+
+
+def pad_up_to(t, max_in_dims, constant_values):
+    s = tf.shape(t)
+    paddings = [[0, m-s[i]] for (i,m) in enumerate(max_in_dims)]
+    return tf.pad(t, paddings, 'CONSTANT', constant_values=constant_values)
 
 
 def get_worker_files(dirname,
@@ -49,7 +56,8 @@ def get_worker_files(dirname,
 
 
 class StreamReader:
-    def __init__(self, data_paths, batch_size, shuffle=False, shuffle_buffer_size=1000):
+    def __init__(self, data_paths, batch_size, shuffle=False, shuffle_buffer_size=1000, args=None):
+        self.args = args
         tf.config.experimental.set_visible_devices([], device_type="GPU")
         # logging.info(f"visible_devices:{tf.config.experimental.get_visible_devices()}")
         logging.info(f"data_paths: {data_paths}")
@@ -86,14 +94,26 @@ class StreamReader:
         sess_label = tf.strings.split(sess, '-').values
         # tf.print(sess_label)
         sess_poss = tf.gather(sess_label, tf.where(tf.equal(sess_label, '1'))-1)
-        # tf.print(sess_poss)
+        # tf.print(tf.shape(sess_poss))
+        # tf.print(tf.shape(sess_poss)[1])
         record = tf.expand_dims(record, axis=0)
-        poss_num = tf.size(sess_poss)
-        # tf.print(poss_num)
-        # tf.print('after _process_record')
-        # tf.print(sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0))
-        return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
-        # return sess_poss[:, 0], tf.tile(record, [poss_num])
+        if self.args.enable_slate_data:
+            poss_ratio = self.args.slate_length - self.args.neg_ratio
+            r, c = tf.shape(sess_poss)[0], tf.shape(sess_poss)[1]
+            sess_poss_padded = pad_up_to(sess_poss, [((r // poss_ratio) + int((r % poss_ratio != 0))) * poss_ratio, c], 'N_PADDING')
+            sess_poss = tf.reshape(sess_poss_padded, (-1, poss_ratio))
+            poss_num = tf.shape(sess_poss)[0]
+            # tf.print(tf.shape(sess_poss))
+            # tf.print(poss_num)
+            # tf.print('after _process_record')            
+            # tf.print(sess_poss, tf.compat.v1.repeat(record, poss_num, axis=0))
+            return sess_poss, tf.compat.v1.repeat(record, poss_num, axis=0)
+        else:
+            poss_num = tf.size(sess_poss)
+            # tf.print('after _process_record')            
+            # tf.print(sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0))
+            return sess_poss[:, 0], tf.compat.v1.repeat(record, poss_num, axis=0)
+            # return sess_poss[:, 0], tf.tile(record, [poss_num])
 
     def reset(self):
         self.endofstream = False
@@ -122,6 +142,7 @@ class StreamSampler:
         enable_shuffle=False,
         shuffle_buffer_size=1000,
         shuffle_seed=0,
+        args=None
     ):
         data_paths = get_worker_files(
             data_dir,
@@ -135,7 +156,8 @@ class StreamSampler:
             data_paths, 
             batch_size,
             enable_shuffle,
-            shuffle_buffer_size
+            shuffle_buffer_size,
+            args
             )
 
     def __iter__(self):
@@ -160,7 +182,7 @@ class StreamSampler:
 
 
 class StreamReaderTest(StreamReader):
-    def __init__(self, data_paths, batch_size, shuffle=False, shuffle_buffer_size=1000):
+    def __init__(self, data_paths, batch_size, shuffle=False, shuffle_buffer_size=1000, args=None):
         tf.config.experimental.set_visible_devices([], device_type="GPU")
         logging.info(f"visible_devices:{tf.config.experimental.get_visible_devices()}")
         path_len = len(data_paths)
@@ -177,7 +199,6 @@ class StreamReaderTest(StreamReader):
         dataset = dataset.batch(batch_size)
         dataset = dataset.prefetch(1)
         self.next_batch = iter(dataset)
-        # self.session = None
 
 
 class StreamSamplerTest(StreamSampler):
@@ -191,6 +212,7 @@ class StreamSamplerTest(StreamSampler):
         enable_shuffle=False,
         shuffle_buffer_size=1000,
         shuffle_seed=0,
+        args=None
     ):
         data_paths = get_worker_files(
             data_dir,
@@ -204,7 +226,8 @@ class StreamSamplerTest(StreamSampler):
             data_paths, 
             batch_size, 
             enable_shuffle,
-            shuffle_buffer_size)
+            shuffle_buffer_size,
+            args)
 
     def __next__(self):
         """Implement iterator interface."""
@@ -219,10 +242,12 @@ class StreamSamplerTest(StreamSampler):
 
 if __name__ == "__main__":
     utils.setuplogger()
+    args = parse_args()    
     print("start")
     sampler = StreamSampler(
         "../MIND/train",
-        "behaviors*.tsv", 4, 0, 1)
+        "behaviors*.tsv", 4, 0, 1,
+        args=args)
 
     import time
     for i in sampler:
