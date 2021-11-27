@@ -212,7 +212,7 @@ def train(args):
                 tsv_writer.writerows(data)
         write_tsv(data)
 
-    with torch.autograd.detect_anomaly():
+    with torch.autograd.detect_anomaly() if args.enable_detect_anomaly else utils.dummy_context_mgr():
         logging.info('Training...')
         for ep in range(args.epochs):
             loss = 0.0
@@ -284,9 +284,9 @@ def train(args):
 
             logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
 
-        # # save model last of epoch
-        # if hvd_rank == 0:
-        #     save_model(LOSS, ACC)
+            # # save model last of epoch
+            # if hvd_rank == 0:
+            #     save_model(LOSS, ACC)
 
     dataloader.join()
 
@@ -485,6 +485,8 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
                     SCORE.append([impression_id, score])
                     continue
 
+                if np.isnan(np.min(score)):
+                    logging.error(f"Scores {score} have NAN, correct your model!")
                 auc = roc_auc_score(label, score)
                 mrr = mrr_score(label, score)
                 ndcg5 = ndcg_score(label, score, k=5)

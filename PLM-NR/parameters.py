@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument("--enable_gpu", type=utils.str2bool, default=True)
     parser.add_argument("--enable_hvd", type=utils.str2bool, default=True)
     parser.add_argument("--enable_incremental", type=utils.str2bool, default=True)
+    parser.add_argument("--enable_detect_anomaly", type=utils.str2bool, default=False)    
     parser.add_argument("--shuffle_buffer_size", type=int, default=10000)
     parser.add_argument("--num_workers", type=int, default=6)
     parser.add_argument("--filter_num_user", type=int, default=0)
@@ -54,9 +55,9 @@ def parse_args():
     parser.add_argument("--enable_lr_scheduler", type=utils.str2bool, default=True)
     parser.add_argument("--num_warmup_steps", type=int, default=1000)
     parser.add_argument("--fineune_options", type=int, default=-2, choices=[0, -2, -12])
-    parser.add_argument("--enable_fastformer_user", type=utils.str2bool, default=True)
-    parser.add_argument("--enable_fastformer_text", type=utils.str2bool, default=True)
-    parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=True)    
+    parser.add_argument("--enable_fastformer_user", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_fastformer_text", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=False)    
     parser.add_argument(
         "--news_attributes",
         type=str,

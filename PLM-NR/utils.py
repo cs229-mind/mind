@@ -50,6 +50,14 @@ def init_hvd_cuda(enable_hvd=True, enable_gpu=True):
     return hvd_size, hvd_rank, hvd_local_rank
 
 
+class dummy_context_mgr():
+    def __enter__(self):
+        return None
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+
 def setuplogger():
     root = logging.getLogger()
     root.setLevel(logging.INFO)
