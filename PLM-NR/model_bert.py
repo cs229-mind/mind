@@ -136,7 +136,12 @@ class TextEncoder(torch.nn.Module):
         self.args = args
         self.bert_model = bert_model
         self.dropout_rate = dropout_rate
-        if self.args.enable_fastformer_text:
+        if self.args.enable_multihead_fastformer_text:
+            self.multihead_attention = MultiHeadAttention(word_embedding_dim,
+                                                        num_attention_heads, 20,
+                                                        20, enable_gpu)
+            self.fastformer_encoder = FastformerEncoder(args, hidden_size=num_attention_heads*20, intermediate_size=num_attention_heads*20)            
+        elif self.args.enable_fastformer_text:
             #TODO make intermediate_size configurable
             self.fastformer_encoder = FastformerEncoder(args, hidden_size=word_embedding_dim, intermediate_size=word_embedding_dim)
             self.reduce_dim_linear = nn.Linear(word_embedding_dim, num_attention_heads*20)
@@ -163,7 +168,18 @@ class TextEncoder(torch.nn.Module):
         word_emb = self.bert_model(text_ids, text_type, text_attmask)[2][8]
         if mask is None:
             mask = text_attmask
-        if self.args.enable_fastformer_text:
+        if self.args.enable_multihead_fastformer_text:
+            text_vector = F.dropout(word_emb,
+                                    p=self.dropout_rate,
+                                    training=self.training)
+            # batch_size, num_words_text, word_embedding_dim
+            multihead_text_vector = self.multihead_attention(
+                text_vector, text_vector, text_vector, mask)
+            multihead_text_vector = F.dropout(multihead_text_vector,
+                                            p=self.dropout_rate,
+                                            training=self.training)
+            text_vector = self.fastformer_encoder(multihead_text_vector, mask)
+        elif self.args.enable_fastformer_text:
             text_vector = self.fastformer_encoder(word_emb, mask)
             text_vector = self.reduce_dim_linear(text_vector)
         else:

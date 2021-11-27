@@ -51,21 +51,21 @@ def read_news_bert(news_path, args, tokenizer, mode='train'):
             index += 1
 
             if 'title' in args.news_attributes:
-                title = title.lower()
+                title = title.lower() if args.do_lower_case else title
                 title = tokenizer(title, max_length=args.num_words_title, \
                 pad_to_max_length=True, truncation=True)
             else:
                 title = []
 
             if 'abstract' in args.news_attributes:
-                abstract = abstract.lower()
+                abstract = abstract.lower() if args.do_lower_case else abstract
                 abstract = tokenizer(abstract, max_length=args.num_words_abstract, \
                 pad_to_max_length=True, truncation=True)
             else:
                 abstract = []
 
             if 'body' in args.news_attributes:
-                body = body.lower()[:2000]
+                body = body.lower()[:2000] if args.do_lower_case else body[:2000]
                 body = tokenizer(body, max_length=args.num_words_body, \
                 pad_to_max_length=True, truncation=True)
             else:
@@ -135,19 +135,19 @@ def read_news(news_path, args, mode='train'):
             index += 1
 
             if 'title' in args.news_attributes:
-                title = title.lower()
+                title = title.lower() if args.do_lower_case else title
                 title = word_tokenize(title)
             else:
                 title = []
 
             if 'abstract' in args.news_attributes:
-                abstract = abstract.lower()
+                abstract = abstract.lower() if args.do_lower_case else abstract
                 abstract = word_tokenize(abstract)
             else:
                 abstract = []
 
             if 'body' in args.news_attributes:
-                body = body.lower()[:2000]
+                body = body.lower()[:2000] if args.do_lower_case else body[:2000]
                 body = word_tokenize(body)
             else:
                 body = []
@@ -245,19 +245,19 @@ def get_doc_input(news, news_index, category_dict, word_dict, domain_dict,
             for word_id in range(min(args.num_words_title, len(title))):
                 if title[word_id] in word_dict:
                     news_title[doc_index,
-                               word_id] = word_dict[title[word_id].lower()]
+                               word_id] = word_dict[title[word_id].lower() if args.do_lower_case else title[word_id]]
 
         if 'abstract' in args.news_attributes:
             for word_id in range(min(args.num_words_abstract, len(abstract))):
                 if abstract[word_id] in word_dict:
                     news_abstract[doc_index, word_id] = word_dict[
-                        abstract[word_id].lower()]
+                        abstract[word_id].lower() if args.do_lower_case else abstract[word_id]]
 
         if 'body' in args.news_attributes:
             for word_id in range(min(args.num_words_body, len(body))):
                 if body[word_id] in word_dict:
                     news_body[doc_index,
-                              word_id] = word_dict[body[word_id].lower()]
+                              word_id] = word_dict[body[word_id].lower() if args.do_lower_case else body[word_id]]
 
         if 'category' in args.news_attributes:
             news_category[doc_index, 0] = category_dict[category] if category in category_dict else 0

@@ -79,7 +79,7 @@ def train(args):
 
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
-    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True, output_attentions=True, use_cache=True)
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path))
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
 
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
@@ -212,76 +212,77 @@ def train(args):
                 tsv_writer.writerows(data)
         write_tsv(data)
 
-    logging.info('Training...')
-    for ep in range(args.epochs):
-        loss = 0.0
-        accuracy = 0.0
-        for cnt, (user_ids, log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
-            if cnt > args.max_steps_per_epoch:
-                break
+    with torch.autograd.detect_anomaly():
+        logging.info('Training...')
+        for ep in range(args.epochs):
+            loss = 0.0
+            accuracy = 0.0
+            for cnt, (user_ids, log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
+                if cnt > args.max_steps_per_epoch:
+                    break
 
-            if args.enable_gpu:
-                log_ids = log_ids.cuda(non_blocking=True)
-                log_mask = log_mask.cuda(non_blocking=True)
-                input_ids = input_ids.cuda(non_blocking=True)
-                user_ids = user_ids.cuda(non_blocking=True)
-                targets = targets.cuda(non_blocking=True)
+                if args.enable_gpu:
+                    log_ids = log_ids.cuda(non_blocking=True)
+                    log_mask = log_mask.cuda(non_blocking=True)
+                    input_ids = input_ids.cuda(non_blocking=True)
+                    user_ids = user_ids.cuda(non_blocking=True)
+                    targets = targets.cuda(non_blocking=True)
 
-            bz_loss, y_hat = model(input_ids, user_ids, log_ids, log_mask, targets)
-            # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
-            optimizer.zero_grad()
-            bz_loss.backward()
-            optimizer.step()
-            if args.enable_lr_scheduler:
-                lr_scheduler.step()
+                bz_loss, y_hat = model(input_ids, user_ids, log_ids, log_mask, targets)
+                # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
+                optimizer.zero_grad()
+                bz_loss.backward()
+                optimizer.step()
+                if args.enable_lr_scheduler:
+                    lr_scheduler.step()
 
-            loss += (bz_loss.data.float() - loss) / (cnt + 1)
-            accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
-            if cnt % args.log_steps == 0:
-                LOSS.append(loss.data)
-                ACC.append(accuracy)
-                VERBOSE.append('[{}] Ed: {}-{}-{}'.format(hvd_rank, ep, cnt * args.batch_size, datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
-                logging.info(
-                    '[{}] Ed: {} {}, train_loss: {:.5f}, acc: {:.5f}'.format(
-                        hvd_rank, ep, cnt * args.batch_size, loss.data,
-                        accuracy))
+                loss += (bz_loss.data.float() - loss) / (cnt + 1)
+                accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
+                if cnt % args.log_steps == 0:
+                    LOSS.append(loss.data)
+                    ACC.append(accuracy)
+                    VERBOSE.append('[{}] Ed: {}-{}-{}'.format(hvd_rank, ep, cnt * args.batch_size, datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
+                    logging.info(
+                        '[{}] Ed: {} {}, train_loss: {:.5f}, acc: {:.5f}'.format(
+                            hvd_rank, ep, cnt * args.batch_size, loss.data,
+                            accuracy))
 
-            # save model for every num of save steps
-            logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
-            def save_model(LOSS, ACC, VERBOSE, eva=True):
-                ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
-                torch.save(
-                    {
-                        'model_state_dict': model.state_dict(),
-                        'user_dict': user_dict,                        
-                        'category_dict': category_dict,
-                        'word_dict': word_dict,
-                        'domain_dict': domain_dict,
-                        'subcategory_dict': subcategory_dict
-                    }, ckpt_path)
-                logging.info(f"Model saved to {ckpt_path}")
-                # save history
-                if len(LOSS) != 0:
-                    write_history(LOSS, ACC, VERBOSE, outfile)
-                    LOSS, ACC, VERBOSE = [], [], []
-                    logging.info(f"Training history saved to {outfile}")
+                # save model for every num of save steps
+                logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
+                def save_model(LOSS, ACC, VERBOSE, eva=True):
+                    ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
+                    torch.save(
+                        {
+                            'model_state_dict': model.state_dict(),
+                            'user_dict': user_dict,                        
+                            'category_dict': category_dict,
+                            'word_dict': word_dict,
+                            'domain_dict': domain_dict,
+                            'subcategory_dict': subcategory_dict
+                        }, ckpt_path)
+                    logging.info(f"Model saved to {ckpt_path}")
+                    # save history
+                    if len(LOSS) != 0:
+                        write_history(LOSS, ACC, VERBOSE, outfile)
+                        LOSS, ACC, VERBOSE = [], [], []
+                        logging.info(f"Training history saved to {outfile}")
 
-                # evaluate the model for each save
-                if eva:
-                    prev_test_dir = args.test_dir
-                    args.test_dir = 'dev'
-                    logging.info(f"Evaluation on data in dir {args.test_dir} started")
-                    model.eval()
-                    torch.set_grad_enabled(False)
-                    metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
-                    model.train()
-                    torch.set_grad_enabled(True)
-                    args.test_dir = prev_test_dir
-                    logging.info(f"Evaluation on data in dir {args.test_dir} finished with final metrics: {metrics}")
-            if hvd_rank == 0 and cnt % args.save_steps == 0 and cnt != 0:
-                save_model(LOSS, ACC, VERBOSE)
+                    # evaluate the model for each save
+                    if eva:
+                        prev_test_dir = args.test_dir
+                        args.test_dir = 'dev'
+                        logging.info(f"Evaluation on data in dir {args.test_dir} started")
+                        model.eval()
+                        torch.set_grad_enabled(False)
+                        metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
+                        model.train()
+                        torch.set_grad_enabled(True)
+                        args.test_dir = prev_test_dir
+                        logging.info(f"Evaluation on data in dir {args.test_dir} finished with final metrics: {metrics}")
+                if hvd_rank == 0 and cnt % args.save_steps == 0 and cnt != 0:
+                    save_model(LOSS, ACC, VERBOSE)
 
-        logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
+            logging.info('epoch: {} loss: {:.5f} accuracy {:.5f}'.format(ep + 1, loss, accuracy))
 
         # # save model last of epoch
         # if hvd_rank == 0:
@@ -462,8 +463,6 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
             # logging.info(f"start new batch {cnt}")
             count = cnt
 
-            if count == 2:
-                break
             if args.enable_gpu:
                 user_ids = user_ids.cuda(non_blocking=True)
                 log_vecs = log_vecs.cuda(non_blocking=True)

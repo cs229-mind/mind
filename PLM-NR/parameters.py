@@ -56,6 +56,7 @@ def parse_args():
     parser.add_argument("--fineune_options", type=int, default=-2, choices=[0, -2, -12])
     parser.add_argument("--enable_fastformer_user", type=utils.str2bool, default=True)
     parser.add_argument("--enable_fastformer_text", type=utils.str2bool, default=True)
+    parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=True)    
     parser.add_argument(
         "--news_attributes",
         type=str,
