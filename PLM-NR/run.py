@@ -238,8 +238,8 @@ def train(args):
                 optimizer.zero_grad()
                 bz_loss.backward()
 
-                if args.clip_grad is not None:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+                if args.clip_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_norm_(model.parameters(), args.clip_grad_norm)
 
                 optimizer.step()
                 if args.enable_lr_scheduler:
