@@ -25,44 +25,7 @@ from parameters import parse_args
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 
-finetuneset={
-'encoder.layer.10.attention.self.query.weight',
-'encoder.layer.10.attention.self.query.bias',
-'encoder.layer.10.attention.self.key.weight',
-'encoder.layer.10.attention.self.key.bias',
-'encoder.layer.10.attention.self.value.weight',
-'encoder.layer.10.attention.self.value.bias',
-'encoder.layer.10.attention.output.dense.weight',
-'encoder.layer.10.attention.output.dense.bias',
-'encoder.layer.10.attention.output.LayerNorm.weight',
-'encoder.layer.10.attention.output.LayerNorm.bias',
-'encoder.layer.10.intermediate.dense.weight',
-'encoder.layer.10.intermediate.dense.bias',
-'encoder.layer.10.output.dense.weight',
-'encoder.layer.10.output.dense.bias',
-'encoder.layer.10.output.LayerNorm.weight',
-'encoder.layer.10.output.LayerNorm.bias',
-'encoder.layer.11.attention.self.query.weight',
-'encoder.layer.11.attention.self.query.bias',
-'encoder.layer.11.attention.self.key.weight',
-'encoder.layer.11.attention.self.key.bias',
-'encoder.layer.11.attention.self.value.weight',
-'encoder.layer.11.attention.self.value.bias',
-'encoder.layer.11.attention.output.dense.weight',
-'encoder.layer.11.attention.output.dense.bias',
-'encoder.layer.11.attention.output.LayerNorm.weight',
-'encoder.layer.11.attention.output.LayerNorm.bias',
-'encoder.layer.11.intermediate.dense.weight',
-'encoder.layer.11.intermediate.dense.bias',
-'encoder.layer.11.output.dense.weight',
-'encoder.layer.11.output.dense.bias',
-'encoder.layer.11.output.LayerNorm.weight',
-'encoder.layer.11.output.LayerNorm.bias',
-'pooler.dense.weight',
-'pooler.dense.bias',
-'rel_pos_bias.weight',
-'classifier.weight',
-'classifier.bias'}
+
 def train(args):
     # Only support title Turing now
     assert args.enable_hvd  # TODO
@@ -81,6 +44,48 @@ def train(args):
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
+
+    # auto adjust hyper parameter by pre-trained model config
+    args.num_layers = config.num_hidden_layers if args.num_layers is None else args.num_layers
+    args.word_embedding_dim = config.hidden_size if args.word_embedding_dim is None else args.word_embedding_dim
+    finetuneset = {
+    f'encoder.layer.{args.num_layers-2}.attention.self.query.weight',
+    f'encoder.layer.{args.num_layers-2}.attention.self.query.bias',
+    f'encoder.layer.{args.num_layers-2}.attention.self.key.weight',
+    f'encoder.layer.{args.num_layers-2}.attention.self.key.bias',
+    f'encoder.layer.{args.num_layers-2}.attention.self.value.weight',
+    f'encoder.layer.{args.num_layers-2}.attention.self.value.bias',
+    f'encoder.layer.{args.num_layers-2}.attention.output.dense.weight',
+    f'encoder.layer.{args.num_layers-2}.attention.output.dense.bias',
+    f'encoder.layer.{args.num_layers-2}.attention.output.LayerNorm.weight',
+    f'encoder.layer.{args.num_layers-2}.attention.output.LayerNorm.bias',
+    f'encoder.layer.{args.num_layers-2}.intermediate.dense.weight',
+    f'encoder.layer.{args.num_layers-2}.intermediate.dense.bias',
+    f'encoder.layer.{args.num_layers-2}.output.dense.weight',
+    f'encoder.layer.{args.num_layers-2}.output.dense.bias',
+    f'encoder.layer.{args.num_layers-2}.output.LayerNorm.weight',
+    f'encoder.layer.{args.num_layers-2}.output.LayerNorm.bias',
+    f'encoder.layer.{args.num_layers-1}.attention.self.query.weight',
+    f'encoder.layer.{args.num_layers-1}.attention.self.query.bias',
+    f'encoder.layer.{args.num_layers-1}.attention.self.key.weight',
+    f'encoder.layer.{args.num_layers-1}.attention.self.key.bias',
+    f'encoder.layer.{args.num_layers-1}.attention.self.value.weight',
+    f'encoder.layer.{args.num_layers-1}.attention.self.value.bias',
+    f'encoder.layer.{args.num_layers-1}.attention.output.dense.weight',
+    f'encoder.layer.{args.num_layers-1}.attention.output.dense.bias',
+    f'encoder.layer.{args.num_layers-1}.attention.output.LayerNorm.weight',
+    f'encoder.layer.{args.num_layers-1}.attention.output.LayerNorm.bias',
+    f'encoder.layer.{args.num_layers-1}.intermediate.dense.weight',
+    f'encoder.layer.{args.num_layers-1}.intermediate.dense.bias',
+    f'encoder.layer.{args.num_layers-1}.output.dense.weight',
+    f'encoder.layer.{args.num_layers-1}.output.dense.bias',
+    f'encoder.layer.{args.num_layers-1}.output.LayerNorm.weight',
+    f'encoder.layer.{args.num_layers-1}.output.LayerNorm.bias',
+    'pooler.dense.weight',
+    'pooler.dense.bias',
+    'rel_pos_bias.weight',
+    'classifier.weight',
+    'classifier.bias'}
 
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
     # freeze parameters

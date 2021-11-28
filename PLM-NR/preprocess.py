@@ -54,6 +54,8 @@ def read_news_bert(news_path, args, tokenizer, mode='train'):
                 title = title.lower() if args.do_lower_case else title
                 title = tokenizer(title, max_length=args.num_words_title, \
                 pad_to_max_length=True, truncation=True)
+                if 'token_type_ids' not in title:
+                    title['token_type_ids'] = [0] * len(title['input_ids'])
             else:
                 title = []
 
@@ -61,6 +63,8 @@ def read_news_bert(news_path, args, tokenizer, mode='train'):
                 abstract = abstract.lower() if args.do_lower_case else abstract
                 abstract = tokenizer(abstract, max_length=args.num_words_abstract, \
                 pad_to_max_length=True, truncation=True)
+                if 'token_type_ids' not in abstract:
+                    abstract['token_type_ids'] = [0] * len(abstract['input_ids'])                
             else:
                 abstract = []
 
@@ -68,6 +72,8 @@ def read_news_bert(news_path, args, tokenizer, mode='train'):
                 body = body.lower()[:2000] if args.do_lower_case else body[:2000]
                 body = tokenizer(body, max_length=args.num_words_body, \
                 pad_to_max_length=True, truncation=True)
+                if 'token_type_ids' not in body:
+                    body['token_type_ids'] = [0] * len(body['input_ids'])
             else:
                 body = []
 

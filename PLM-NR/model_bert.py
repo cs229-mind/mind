@@ -165,7 +165,10 @@ class TextEncoder(torch.nn.Module):
         text_ids = torch.narrow(text, 1, 0, num_words)
         text_type = torch.narrow(text, 1, num_words, num_words)
         text_attmask = torch.narrow(text, 1, num_words*2, num_words)
-        word_emb = self.bert_model(text_ids, text_type, text_attmask)[2][8]
+        if 'roberta' in self.args.pretrain_lm_path or 'unilm' in self.args.pretrain_lm_path:
+            word_emb = self.bert_model(text_ids, text_attmask)[2][self.args.num_layers-1]
+        else:
+            word_emb = self.bert_model(text_ids, text_type, text_attmask)[2][self.args.num_layers-1]
         if mask is None:
             mask = text_attmask
         if self.args.enable_multihead_fastformer_text:
