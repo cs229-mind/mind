@@ -232,6 +232,10 @@ def train(args):
                 # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
                 optimizer.zero_grad()
                 bz_loss.backward()
+
+                if args.clip_grad is not None:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+
                 optimizer.step()
                 if args.enable_lr_scheduler:
                     lr_scheduler.step()
