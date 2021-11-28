@@ -79,7 +79,7 @@ def train(args):
 
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
-    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path))
+    config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
 
     #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
