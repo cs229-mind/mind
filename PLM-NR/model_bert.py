@@ -300,11 +300,13 @@ class NewsEncoder(torch.nn.Module):
         if len(all_vectors) == 1:
             final_news_vector = all_vectors[0]
         else:
-            final_news_vector = self.final_attention(torch.stack(all_vectors, dim=1))
-            # final_news_vector = torch.mean(
-            #     torch.stack(all_vectors, dim=1),
-            #     dim=1
-            #  )
+            if self.args.enable_additive_news_attributes:            
+                final_news_vector = self.final_attention(torch.stack(all_vectors, dim=1))
+            else:
+                final_news_vector = torch.mean(
+                    torch.stack(all_vectors, dim=1),
+                    dim=1
+                )
 
         # batch_size, news_dim
         final_news_vector = self.reduce_dim_linear(final_news_vector)
@@ -387,11 +389,13 @@ class UserEncoder(torch.nn.Module):
         if len(all_vectors) == 1:
             final_user_vector = all_vectors[0]
         else:
-            final_user_vector = self.final_attention(torch.stack(all_vectors, dim=1))
-            # final_user_vector = torch.mean(
-            #     torch.stack(all_vectors, dim=1),
-            #     dim=1
-            #  )
+            if self.args.enable_additive_user_attributes:
+                final_user_vector = self.final_attention(torch.stack(all_vectors, dim=1))
+            else:
+                final_user_vector = torch.mean(
+                    torch.stack(all_vectors, dim=1),
+                    dim=1
+                )
         return final_user_vector
 
 
