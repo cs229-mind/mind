@@ -10,7 +10,7 @@ import torch
 from torch.utils.data import IterableDataset
 from streaming import StreamSampler, StreamSamplerTest
 import utils
-from ltr.loss_func import PADDED_Y_VALUE
+from ltr.utils import PADDED_Y_VALUE
 
 
 def news_sample(news, ratio):

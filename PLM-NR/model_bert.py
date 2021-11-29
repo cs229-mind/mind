@@ -4,11 +4,11 @@ from torch import nn
 import torch.nn.functional as F
 import os
 import math
-from ltr.loss_func import get_loss_func
+from ltr.utils import get_loss_func, get_interaction_func
 from fastformer.fastformer import FastformerEncoder
 
 
-class Feedforward(torch.nn.Module):
+class Feedforward(nn.Module):
         def __init__(self, input_size, hidden_size):
             super(Feedforward, self).__init__()
             self.input_size = input_size
@@ -440,22 +440,9 @@ class ModelBert(torch.nn.Module):
 
         self.final_interaction = Feedforward(self.args.news_dim, self.args.user_query_vector_dim)
 
+        self.scoring = get_interaction_func(args)
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = get_loss_func(args)
-
-    def interaction(self, news_vec, user_vec):
-        if self.args.interaction == 'cosine':
-            score = torch.bmm(news_vec, user_vec.unsqueeze(-1)).squeeze(dim=-1)
-        elif self.args.interaction == 'hadamard':
-            hadamard_product = torch.mul(news_vec, user_vec.unsqueeze(1))
-            score = self.final_interaction(hadamard_product).squeeze(dim=-1)
-        elif self.args.interaction == 'concatenation':
-            concatenation = torch.cat((news_vec, user_vec.unsqueeze(1)), dim=1)
-            score = self.final_interaction(concatenation).squeeze(dim=-1)
-        else:
-            raise ValueError(f'interaction {self.args.interaction} is not supported!')
-
-        return score
 
     def forward(self,
                 input_ids,
@@ -486,7 +473,7 @@ class ModelBert(torch.nn.Module):
         user_vector = self.user_encoder(user_ids, log_vec, log_mask)
 
         # batch_size, 2
-        score = self.interaction(news_vec, user_vector)
+        score = self.scoring(news_vec, user_vector)
         if compute_loss:
             loss = self.criterion(score, targets)
             return loss, score
