@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-2)
     parser.add_argument("--correct_bias", type=utils.str2bool, default=True)
-    parser.add_argument("--clip_grad_norm", type=float, default=2.0)  # None for no clipping, 2.0 for clipping norm 2.0
+    parser.add_argument("--clip_grad_norm", type=float, default=None)  # None for no clipping, 2.0 for clipping norm 2.0
     parser.add_argument("--enable_lr_scheduler", type=utils.str2bool, default=True)
     parser.add_argument("--num_warmup_steps", type=int, default=1000)
     parser.add_argument("--fineune_options", type=int, default=-2, choices=[0, -2, -12])
@@ -60,12 +60,12 @@ def parse_args():
     parser.add_argument("--enable_fastformer_text", type=utils.str2bool, default=True)
     parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=False)
     parser.add_argument("--enable_additive_user_attributes", type=utils.str2bool, default=True)
-    parser.add_argument("--enable_additive_news_attributes", type=utils.str2bool, default=True)    
+    parser.add_argument("--enable_additive_news_attributes", type=utils.str2bool, default=True)
     parser.add_argument(
         "--news_attributes",
         type=str,
         nargs='+',
-        default=['title', 'abstract'],
+        default=['title'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
     parser.add_argument(
         "--user_attributes",
@@ -148,13 +148,14 @@ def parse_args():
     # pretrain
     parser.add_argument("--num_layers", type=int, default=None) # None to let the program assign it automatically by pre-trained model
     parser.add_argument("--pretrain_lm_path", type=str,
-                        default="~/mind/roberta-large",
+                        default="~/mind/MiniLM-L12-H384-uncased",
                         choices=['~/mind/bert-base-uncased', '~/mind/MiniLM-L12-H384-uncased', '~/mind/unilm-base-cased', '~/mind/unilm-large-cased', '~/mind/roberta-large'])
     parser.add_argument("--use_pretrain_news_encoder", type=utils.str2bool, default=False)
     parser.add_argument("--pretrain_news_encoder_path", type=str, default="~/mind/bert-base-uncased")
 
     # inference
     parser.add_argument("--ignore_unseen_user", type=utils.str2bool, default=False)
+    parser.add_argument("--save_embedding", type=utils.str2bool, default=False)
 
     # uet add method
     parser.add_argument(

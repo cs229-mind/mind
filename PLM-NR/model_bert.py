@@ -318,7 +318,7 @@ class UserEncoder(torch.nn.Module):
         super(UserEncoder, self).__init__()
         self.args = args
         self.user_dict_size = user_dict_size
-        if self.args.enable_fastformer_text:
+        if self.args.enable_fastformer_user:
             self.news_fastformer_encoder = FastformerEncoder(args, hidden_size=args.news_dim, intermediate_size=args.user_query_vector_dim)
         else:
             self.news_additive_attention = AdditiveAttention(
@@ -361,7 +361,7 @@ class UserEncoder(torch.nn.Module):
             vec = vec * mask.unsqueeze(2).expand(-1, -1, self.args.news_dim) + padding_doc * (1 - mask.unsqueeze(2).expand(-1, -1, self.args.news_dim))
 
         # batch_size, news_dim
-        if self.args.enable_fastformer_text:
+        if self.args.enable_fastformer_user:
             vec = self.news_fastformer_encoder(vec, mask if use_mask else None)
         else:
             vec = self.news_additive_attention(vec,

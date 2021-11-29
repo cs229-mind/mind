@@ -209,7 +209,7 @@ def train(args):
     outfile = os.path.join(os.path.expanduser(args.model_dir), "history_{}.tsv".format(datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
     def write_history(LOSS, ACC, VERBOSE, outfile):
         # format the data: loss, acc
-        data = [(round(float(loss), 5), round(float(acc), 5), verbose) for score, acc, verbose in zip(LOSS, ACC, VERBOSE)]
+        data = [(round(float(l), 5), round(float(a), 5), v) for l, a, v in zip(LOSS, ACC, VERBOSE)]
         # save the prediction result
         def write_tsv(data):
             with open(outfile, 'a') as out_file:

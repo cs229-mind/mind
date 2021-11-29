@@ -57,6 +57,12 @@ def test(args):
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
     bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
+
+    # auto adjust hyper parameter by pre-trained model config
+    args.num_layers = config.num_hidden_layers if args.num_layers is None else args.num_layers
+    args.word_embedding_dim = config.hidden_size if args.word_embedding_dim is None else args.word_embedding_dim
+
+
     model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
 
     if args.enable_gpu:
