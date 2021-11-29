@@ -440,9 +440,9 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     count = 0
 
     outfile_metrics = os.path.join(os.path.expanduser(args.model_dir), "metrics_{}_{}_{}.tsv".format(ckpt_path.rsplit('/',1)[1].rsplit('.',1)[0], datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
-    def print_metrics(hvd_local_rank, cnt, x, save=True):
+    def print_metrics(hvd_local_rank, cnt, mean_metrics, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
-            '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
+            '\t'.join(["{:0.2f}".format(i * 100) for i in mean_metrics]))
         logging.info(metrics)
         # save the metrics result
         def write_tsv(etrics):
@@ -532,8 +532,9 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         SCORE = []
 
     # print and save metrics
-    logging.info("Print final metrics")
-    final_metrics = print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    if len(AUC) > 0:
+        logging.info("Print final metrics")
+        final_metrics = print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     logging.info(f"Time taken: {time.time() - start_time}")
 

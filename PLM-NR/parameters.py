@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--filename_pat", type=str, default="behaviors*.tsv")
     parser.add_argument("--scoring_output", type=str, default="epoch-1-0--0.55456-0.76515*.tsv")
     parser.add_argument("--model_dir", type=str, default='~/mind/PLM-NR/model')
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--neg_ratio", type=int, default=1)
     parser.add_argument("--enable_slate_data", type=utils.str2bool, default=False)
     parser.add_argument("--slate_length", type=int, default=2)  # slate_length - neg_ratio = pos_ratio, so slate_length must > neg_ratio
@@ -61,17 +61,18 @@ def parse_args():
     parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=False)
     parser.add_argument("--enable_additive_user_attributes", type=utils.str2bool, default=True)
     parser.add_argument("--enable_additive_news_attributes", type=utils.str2bool, default=True)
+    parser.add_argument("--interaction", type=str, default='cosine', choices=['cosine', 'hadamard', 'concatenation'])
     parser.add_argument(
         "--news_attributes",
         type=str,
         nargs='+',
-        default=['title'],
+        default=['title', 'abstract', 'category', 'domain', 'subcategory'],
         choices=['title', 'abstract', 'body', 'category', 'domain', 'subcategory'])
     parser.add_argument(
         "--user_attributes",
         type=str,
         nargs='+',
-        default=['click_docs'],
+        default=['click_docs', 'user_id'],
         choices=['click_docs', 'user_id'])
     parser.add_argument("--process_uet", type=utils.str2bool, default=False)
     parser.add_argument("--process_bing", type=utils.str2bool, default=False)

@@ -166,9 +166,9 @@ def test(args):
     SCORE = []
 
     outfile_metrics = os.path.join(os.path.expanduser(args.model_dir), "metrics_{}_{}_{}.tsv".format(ckpt_path.rsplit('/',1)[1].rsplit('.',1)[0], datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"), hvd_local_rank))
-    def print_metrics(hvd_local_rank, cnt, x, save=True):
+    def print_metrics(hvd_local_rank, cnt, mean_metrics, save=True):
         metrics = "[{}] Ed: {}: {}".format(hvd_local_rank, cnt, \
-            '\t'.join(["{:0.2f}".format(i * 100) for i in x]))
+            '\t'.join(["{:0.2f}".format(i * 100) for i in mean_metrics]))
         logging.info(metrics)
         # save the metrics result
         def write_tsv(etrics):
@@ -255,8 +255,9 @@ def test(args):
     dataloader.join()
 
     # print and save metrics
-    logging.info("Print final metrics")
-    print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
+    if len(AUC) > 0:
+        logging.info("Print final metrics")
+        print_metrics(hvd_rank, cnt * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))
 
     # format the score: ImpressionID [Rank-of-News1,Rank-of-News2,...,Rank-of-NewsN]
     logging.info("Process scoring")
@@ -273,7 +274,8 @@ def test(args):
             tsv_writer = csv.writer(out_file, delimiter='\t')
             tsv_writer.writerows(score)
         logging.info(f"Saved scoring to {outfile_prediction}")
-    write_tsv(SCORE)
+    if len(SCORE) > 0:
+        write_tsv(SCORE)
 
     logging.info(f"Time taken: {time.time() - start_time}")
 

@@ -8,8 +8,12 @@ from utils import word_tokenize, parallel
 from streaming import get_files
 
 
-def get_domain(url):
-    domain = urlparse(url).netloc
+# def get_domain(url):
+#     domain = urlparse(url).netloc
+#     return domain
+# TODO: in mind dataset, the domain seems to be always the same, so use it for news id as categorical feature for now!!!
+def get_domain(doc_id):
+    domain = doc_id
     return domain
 
 
@@ -88,7 +92,7 @@ def read_news_bert(news_path, args, tokenizer, mode='train'):
                 subcategory = None
 
             if 'domain' in args.news_attributes:
-                domain = get_domain(url)
+                domain = get_domain(doc_id)
                 domains.append(domain)
             else:
                 domain = None
@@ -169,7 +173,7 @@ def read_news(news_path, args, mode='train'):
                 subcategory = None
 
             if 'domain' in args.news_attributes:
-                domain = get_domain(url)
+                domain = get_domain(doc_id)
                 domains.append(domain)
             else:
                 domain = None

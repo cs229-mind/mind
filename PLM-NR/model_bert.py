@@ -8,6 +8,23 @@ from ltr.loss_func import get_loss_func
 from fastformer.fastformer import FastformerEncoder
 
 
+class Feedforward(torch.nn.Module):
+        def __init__(self, input_size, hidden_size):
+            super(Feedforward, self).__init__()
+            self.input_size = input_size
+            self.hidden_size  = hidden_size
+            self.fc1 = torch.nn.Linear(self.input_size, self.hidden_size)
+            self.relu = torch.nn.ReLU()
+            self.fc2 = torch.nn.Linear(self.hidden_size, 1)
+            self.sigmoid = torch.nn.Sigmoid()
+        def forward(self, x):
+            hidden = self.fc1(x)
+            relu = self.relu(hidden)
+            output = self.fc2(relu)
+            output = self.sigmoid(output)
+            return output
+
+
 class AdditiveAttention(nn.Module):
     ''' AttentionPooling used to weighted aggregate news vectors
     Arg: 
@@ -414,7 +431,6 @@ class ModelBert(torch.nn.Module):
         super(ModelBert, self).__init__()
         self.args = args
 
-
         self.news_encoder = NewsEncoder(args,
                                         bert_model,
                                         category_dict_size, 
@@ -422,8 +438,24 @@ class ModelBert(torch.nn.Module):
                                         subcategory_dict_size)
         self.user_encoder = UserEncoder(args, user_dict_size)
 
+        self.final_interaction = Feedforward(self.args.news_dim, self.args.user_query_vector_dim)
+
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = get_loss_func(args)
+
+    def interaction(self, news_vec, user_vec):
+        if self.args.interaction == 'cosine':
+            score = torch.bmm(news_vec, user_vec.unsqueeze(-1)).squeeze(dim=-1)
+        elif self.args.interaction == 'hadamard':
+            hadamard_product = torch.mul(news_vec, user_vec.unsqueeze(1))
+            score = self.final_interaction(hadamard_product).squeeze(dim=-1)
+        elif self.args.interaction == 'concatenation':
+            concatenation = torch.cat((news_vec, user_vec.unsqueeze(1)), dim=1)
+            score = self.final_interaction(concatenation).squeeze(dim=-1)
+        else:
+            raise ValueError(f'interaction {self.args.interaction} is not supported!')
+
+        return score
 
     def forward(self,
                 input_ids,
@@ -454,7 +486,7 @@ class ModelBert(torch.nn.Module):
         user_vector = self.user_encoder(user_ids, log_vec, log_mask)
 
         # batch_size, 2
-        score = torch.bmm(news_vec, user_vector.unsqueeze(-1)).squeeze(dim=-1)
+        score = self.interaction(news_vec, user_vector)
         if compute_loss:
             loss = self.criterion(score, targets)
             return loss, score
