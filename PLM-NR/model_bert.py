@@ -440,7 +440,7 @@ class ModelBert(torch.nn.Module):
 
         self.final_interaction = Feedforward(self.args.news_dim, self.args.user_query_vector_dim)
 
-        self.scoring = get_interaction_func(args)
+        self.scoring = get_interaction_func(args, self.final_interaction)
         # self.criterion = nn.CrossEntropyLoss()
         self.criterion = get_loss_func(args)
 

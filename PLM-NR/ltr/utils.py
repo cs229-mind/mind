@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch.nn import BCEWithLogitsLoss
 
 
-def get_interaction_func(args):
+def get_interaction_func(args, final_interaction):
     if args.interaction == 'cosine':
         def scoring(news_vec, user_vec):
             score = torch.bmm(news_vec, user_vec.unsqueeze(-1)).squeeze(dim=-1)
@@ -16,15 +16,15 @@ def get_interaction_func(args):
     elif args.interaction == 'hadamard':
         def scoring(news_vec, user_vec):
             hadamard_product = torch.mul(news_vec, user_vec.unsqueeze(1))
-            score = self.final_interaction(hadamard_product).squeeze(dim=-1)
+            score = final_interaction(hadamard_product).squeeze(dim=-1)
             return score
     elif args.interaction == 'concatenation':
         def scoring(news_vec, user_vec):
             concatenation = torch.cat((news_vec, user_vec.unsqueeze(1)), dim=1)
-            score = self.final_interaction(concatenation).squeeze(dim=-1)
+            score = final_interaction(concatenation).squeeze(dim=-1)
             return score
     else:
-        raise ValueError(f'interaction {self.args.interaction} is not supported!')
+        raise ValueError(f'interaction {args.interaction} is not supported!')
 
     return scoring
 
