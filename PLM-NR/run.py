@@ -248,8 +248,8 @@ def train(args):
                 loss += (bz_loss.data.float() - loss) / (cnt + 1)
                 accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
                 if cnt % args.log_steps == 0:
-                    LOSS.append(loss.data)
-                    ACC.append(accuracy)
+                    LOSS.append(loss.detach().cpu().numpy())
+                    ACC.append(accuracy.detach().cpu().numpy())
                     VERBOSE.append('[{}] Ed: {}-{}-{}'.format(hvd_rank, ep, cnt * args.batch_size, datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
                     logging.info(
                         '[{}] Ed: {} {}, train_loss: {:.5f}, acc: {:.5f}'.format(
