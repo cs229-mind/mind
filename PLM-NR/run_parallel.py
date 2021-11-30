@@ -211,18 +211,22 @@ def test(args):
         if args.ignore_unseen_user and len(user_ids) == 0:
             return []
 
-        user_vecs = model.user_encoder(user_ids, log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+        user_vecs = model.user_encoder(user_ids, log_vecs, log_mask)
 
-        scores = []
         for impression_id, user_vec, news_vec, bias, label in zip(
                 impression_ids, user_vecs, news_vecs, news_bias, labels):
 
             if label.mean() == 0 or label.mean() == 1:
                 continue
 
-            score = np.dot(
-                news_vec, user_vec
-            )
+            if args.enable_gpu:
+                news_vec = torch.FloatTensor(news_vec).cuda()
+            else:
+                news_vec = torch.FloatTensor(news_vec)
+
+            user_vec = user_vec.unsqueeze(0)
+            news_vec = news_vec.unsqueeze(0)
+            score = model.scoring(news_vec, user_vec).to(torch.device("cpu")).detach().numpy().squeeze()
 
             # label is -1 is for test set and prediction only
             if(np.all(label == -1)):
