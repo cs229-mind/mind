@@ -21,7 +21,8 @@ from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_user, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
 from parameters import parse_args
-# from torchsummary import summary
+from torchsummary import summary
+from torch.utils.tensorboard import SummaryWriter
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 
