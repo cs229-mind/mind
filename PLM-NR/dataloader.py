@@ -388,6 +388,10 @@ class DataLoaderTest(DataLoaderTrain):
             user_id_batch.append(user_id)
             user_feature_batch.append(user_feature)
             log_mask_batch.append(log_mask)
+            if self.enable_gpu:
+                news_feature = torch.FloatTensor(news_feature).cuda()
+            else:
+                news_feature = torch.FloatTensor(news_feature)
             news_feature_batch.append(news_feature)
             news_bias_batch.append(news_bias)
             label_batch.append(np.array(labels))

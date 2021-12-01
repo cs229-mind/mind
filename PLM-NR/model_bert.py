@@ -438,7 +438,12 @@ class ModelBert(torch.nn.Module):
                                         subcategory_dict_size)
         self.user_encoder = UserEncoder(args, user_dict_size)
 
-        self.final_interaction = Feedforward(self.args.news_dim, self.args.user_query_vector_dim)
+        if self.args.interaction == 'hadamard' or self.args.interaction == 'concatenation':
+            self.final_interaction = Feedforward(self.args.news_dim if self.args.interaction == 'hadamard' \
+                                                                    else self.args.news_dim * 2, # if self.args.interaction == 'concatenation'
+                                                self.args.user_query_vector_dim)
+        else:
+            self.final_interaction = None
 
         self.scoring = get_interaction_func(args, self.final_interaction)
         # self.criterion = nn.CrossEntropyLoss()

@@ -20,7 +20,7 @@ def get_interaction_func(args, final_interaction):
             return score
     elif args.interaction == 'concatenation':
         def scoring(news_vec, user_vec):
-            concatenation = torch.cat((news_vec, user_vec.unsqueeze(1)), dim=1)
+            concatenation = torch.cat((news_vec, user_vec.unsqueeze(1).expand(*[-1, news_vec.shape[1], -1])), dim=2)
             score = final_interaction(concatenation).squeeze(dim=-1)
             return score
     else:

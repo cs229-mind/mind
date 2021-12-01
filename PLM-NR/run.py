@@ -21,7 +21,8 @@ from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_user, read_news_bert, get_doc_input, get_doc_input_bert
 from model_bert import ModelBert
 from parameters import parse_args
-# from torchsummary import summary
+from torchsummary import summary
+from torch.utils.tensorboard import SummaryWriter
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 
@@ -248,8 +249,8 @@ def train(args):
                 loss += (bz_loss.data.float() - loss) / (cnt + 1)
                 accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
                 if cnt % args.log_steps == 0:
-                    LOSS.append(loss.data)
-                    ACC.append(accuracy)
+                    LOSS.append(loss.detach().cpu().numpy())
+                    ACC.append(accuracy.detach().cpu().numpy())
                     VERBOSE.append('[{}] Ed: {}-{}-{}'.format(hvd_rank, ep, cnt * args.batch_size, datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")))
                     logging.info(
                         '[{}] Ed: {} {}, train_loss: {:.5f}, acc: {:.5f}'.format(
@@ -295,7 +296,7 @@ def train(args):
 
             # # save model last of epoch
             # if hvd_rank == 0:
-            #     save_model(LOSS, ACC)
+            #     save_model(LOSS, ACC, VERBOSE)
 
     dataloader.join()
 
@@ -482,7 +483,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
                 log_vecs = log_vecs.cuda(non_blocking=True)
                 log_mask = log_mask.cuda(non_blocking=True)
 
-            user_vecs = model.user_encoder(user_ids, log_vecs, log_mask).to(torch.device("cpu")).detach().numpy()
+            user_vecs = model.user_encoder(user_ids, log_vecs, log_mask)
 
             for impression_id, user_vec, news_vec, bias, label in zip(
                     impression_ids, user_vecs, news_vecs, news_bias, labels):
@@ -490,9 +491,9 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
                 if label.mean() == 0 or label.mean() == 1:
                     continue
 
-                score = np.dot(
-                    news_vec, user_vec
-                )
+                user_vec = user_vec.unsqueeze(0)
+                news_vec = news_vec.unsqueeze(0)
+                score = model.scoring(news_vec, user_vec).to(torch.device("cpu")).detach().numpy().squeeze()
 
                 # label is -1 is for test set and prediction only
                 if(np.all(label == -1)):
