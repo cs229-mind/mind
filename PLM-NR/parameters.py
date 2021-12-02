@@ -62,7 +62,7 @@ def parse_args():
     parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=False)
     parser.add_argument("--enable_additive_user_attributes", type=utils.str2bool, default=True)
     parser.add_argument("--enable_additive_news_attributes", type=utils.str2bool, default=True)
-    parser.add_argument("--interaction", type=str, default='cosine', choices=['cosine', 'hadamard', 'concatenation'])
+    parser.add_argument("--interaction", type=str, default='concatenation', choices=['cosine', 'hadamard', 'concatenation'])
     parser.add_argument("--enable_weight_tfboard", type=utils.str2bool, default=False)
     parser.add_argument(
         "--news_attributes",
