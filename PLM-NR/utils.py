@@ -10,6 +10,10 @@ from spacy.util import minibatch
 from joblib import Parallel, delayed
 from functools import partial
 from ltr.metrics import ndcg, dcg, mrr
+# TODO: this is a temp workaround to make tensorboard work for add_embeddings
+import tensorboard as tb
+import tensorflow as tf
+tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
 
 
 def word_tokenize(sent):
@@ -181,3 +185,44 @@ def parallel(func, batch, batch_size=None, n_jobs=multiprocessing.cpu_count() - 
     logging.debug(('sample result after batch processing: {}'.format(merged_results[0])))
     logging.debug(('number of final result after batch processing: {}'.format(len(merged_results))))
     return merged_results
+
+
+def add_metrics(writer, metrics, global_step):
+    logging.debug('adding metrics to tensorboard: {}'.format(metrics))
+    AUC, MRR, nDCG5, nDCG10 = metrics
+    writer.add_scalar("AUC", AUC, global_step)
+    writer.add_scalar("MRR", MRR, global_step)
+    writer.add_scalar("nDCG5", nDCG5, global_step)
+    writer.add_scalar("nDCG10", nDCG10, global_step)
+    writer.add_scalars('Summary', {'AUC': AUC, 'MRR': MRR, 'nDCG5': nDCG5, 'nDCG10': nDCG10}, global_step)
+    logging.debug('added metrics to tensorboard: {}'.format(metrics))
+
+
+def add_embedding(model, writer, list_element_dict, args, global_step):
+    if not args.enable_weight_tfboard:
+        logging.info('skip adding weight to tfboard, enable_weight_tfboard is set to false')
+        return    
+    element_names = [element_name for element_name in list_element_dict.keys()]
+    logging.debug('adding embedding to tensorboard: {}'.format(element_names))
+    for element_name, element_dict in list_element_dict.items():
+        index2element = dict([(value, key) for (key, value) in element_dict.items()])
+        index2element[0] = 'OOV'
+        for name, param in model.named_parameters():
+            if element_name in name.split('.'):
+                writer.add_embedding(param, metadata=index2element, global_step=global_step, tag=element_name)
+    logging.debug('added embedding to tensorboard: {}'.format(element_names))
+
+
+def add_weight_histograms(model, writer, args, global_step):
+    if not args.enable_weight_tfboard:
+        logging.info('skip adding weight to tfboard, enable_weight_tfboard is set to false')
+        return
+    logging.debug('adding weight histograms to tensorboard: layer {}'.format(args.num_layers-1))
+    layer_number = args.num_layers-1
+    layer = 'encoder.layer.{}.output.dense.weight'.format(layer_number)
+    for name, param in model.named_parameters(): 
+        if layer in name:  
+            flattened_weights = param.flatten()
+            tag = f"layer_{layer_number}"
+            writer.add_histogram(tag, flattened_weights, global_step=global_step, bins='tensorflow')
+    logging.debug('added weight histograms to tensorboard: {}'.format(args.num_layers-1))

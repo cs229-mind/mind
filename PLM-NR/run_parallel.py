@@ -15,8 +15,8 @@ import datetime
 import time
 from dataloader_parallel import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
-from preprocess import read_news, read_news_bert, get_doc_input, get_doc_input_bert
-from model_bert import ModelBert
+from preprocess import read_news, read_news_lm, get_doc_input, get_doc_input_lm
+from model import Model
 from parameters import parse_args
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig
@@ -56,14 +56,14 @@ def test(args):
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name e.g. "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
+    language_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path),config=config)
 
     # auto adjust hyper parameter by pre-trained model config
     args.num_layers = config.num_hidden_layers if args.num_layers is None else args.num_layers
     args.word_embedding_dim = config.hidden_size if args.word_embedding_dim is None else args.word_embedding_dim
 
 
-    model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
+    model = Model(args, language_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
 
     if args.enable_gpu:
         model.cuda()
@@ -82,7 +82,7 @@ def test(args):
     if os.path.exists(news_cache_path):
         news, news_index, _, _, _ = pickle.load(open(news_cache_path, "rb"))
     else:
-        news, news_index, _, _, _ = read_news_bert(
+        news, news_index, _, _, _ = read_news_lm(
             os.path.join(os.path.expanduser(args.root_data_dir),
                         f'{args.dataset}/{args.test_dir}/news.tsv'), 
             args,
@@ -93,7 +93,7 @@ def test(args):
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
     news_body, news_body_type, news_body_attmask, \
-    news_category, news_domain, news_subcategory = get_doc_input_bert(
+    news_category, news_domain, news_subcategory = get_doc_input_lm(
         news, news_index, category_dict, domain_dict, subcategory_dict, args)
 
     news_combined = np.concatenate([
@@ -213,6 +213,7 @@ def test(args):
 
         user_vecs = model.user_encoder(user_ids, log_vecs, log_mask)
 
+        scores = []
         for impression_id, user_vec, news_vec, bias, label in zip(
                 impression_ids, user_vecs, news_vecs, news_bias, labels):
 

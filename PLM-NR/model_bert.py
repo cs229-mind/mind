@@ -16,12 +16,10 @@ class Feedforward(nn.Module):
             self.fc1 = torch.nn.Linear(self.input_size, self.hidden_size)
             self.relu = torch.nn.ReLU()
             self.fc2 = torch.nn.Linear(self.hidden_size, 1)
-            self.sigmoid = torch.nn.Sigmoid()
         def forward(self, x):
             hidden = self.fc1(x)
             relu = self.relu(hidden)
             output = self.fc2(relu)
-            output = self.sigmoid(output)
             return output
 
 
@@ -141,7 +139,7 @@ class WeightedLinear(torch.nn.Module):
 
 class TextEncoder(torch.nn.Module):
     def __init__(self,
-                 bert_model,
+                 language_model,
                  word_embedding_dim,
                  num_attention_heads,
                  query_vector_dim,
@@ -151,7 +149,7 @@ class TextEncoder(torch.nn.Module):
         super(TextEncoder, self).__init__()
         #self.word_embedding = word_embedding
         self.args = args
-        self.bert_model = bert_model
+        self.language_model = language_model
         self.dropout_rate = dropout_rate
         if self.args.enable_multihead_fastformer_text:
             self.multihead_attention = MultiHeadAttention(word_embedding_dim,
@@ -183,9 +181,9 @@ class TextEncoder(torch.nn.Module):
         text_type = torch.narrow(text, 1, num_words, num_words)
         text_attmask = torch.narrow(text, 1, num_words*2, num_words)
         if 'roberta' in self.args.pretrain_lm_path or 'unilm' in self.args.pretrain_lm_path:
-            word_emb = self.bert_model(text_ids, text_attmask)[2][self.args.num_layers-1]
+            word_emb = self.language_model(text_ids, text_attmask)[2][self.args.num_layers-1]
         else:
-            word_emb = self.bert_model(text_ids, text_type, text_attmask)[2][self.args.num_layers-1]
+            word_emb = self.language_model(text_ids, text_type, text_attmask)[2][self.args.num_layers-1]
         if mask is None:
             mask = text_attmask
         if self.args.enable_multihead_fastformer_text:
@@ -233,7 +231,7 @@ class ElementEncoder(torch.nn.Module):
 
 
 class NewsEncoder(torch.nn.Module):
-    def __init__(self, args, bert_model, category_dict_size,
+    def __init__(self, args, language_model, category_dict_size,
                  domain_dict_size, subcategory_dict_size):
         super(NewsEncoder, self).__init__()
         self.args = args
@@ -261,7 +259,7 @@ class NewsEncoder(torch.nn.Module):
 
         self.text_encoders = nn.ModuleDict({
             'title':
-            TextEncoder(bert_model,
+            TextEncoder(language_model,
                         args.word_embedding_dim,
                         args.num_attention_heads, args.news_query_vector_dim,
                         args.drop_rate, args.enable_gpu, args)
@@ -416,23 +414,23 @@ class UserEncoder(torch.nn.Module):
         return final_user_vector
 
 
-class ModelBert(torch.nn.Module):
+class Model(torch.nn.Module):
     """
     UniUM network.
     Input 1 + K candidate news and a list of user clicked news, produce the click probability.
     """
     def __init__(self,
                  args,
-                 bert_model,
+                 language_model,
                  user_dict_size=0,
                  category_dict_size=0,
                  domain_dict_size=0,
                  subcategory_dict_size=0):
-        super(ModelBert, self).__init__()
+        super(Model, self).__init__()
         self.args = args
 
         self.news_encoder = NewsEncoder(args,
-                                        bert_model,
+                                        language_model,
                                         category_dict_size, 
                                         domain_dict_size,
                                         subcategory_dict_size)

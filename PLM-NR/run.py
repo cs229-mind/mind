@@ -18,18 +18,17 @@ import datetime
 import time
 from dataloader import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
-from preprocess import read_news, read_user, read_news_bert, get_doc_input, get_doc_input_bert
-from model_bert import ModelBert
+from preprocess import read_news, read_user, read_news_lm, get_doc_input, get_doc_input_lm
+from model_bert import Model
 from parameters import parse_args
-from torchsummary import summary
+from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 from torch.utils.tensorboard import SummaryWriter
 
-from transformers import AutoTokenizer, AutoModel, AutoConfig, get_scheduler, AdamW
 
 
 def train(args):
-    # Only support title Turing now
-    assert args.enable_hvd  # TODO
+
+    assert args.enable_hvd
     if args.enable_hvd:
         import horovod.torch as hvd
 
@@ -44,7 +43,7 @@ def train(args):
     pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path))
     config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
-    bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
+    language_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
 
     # auto adjust hyper parameter by pre-trained model config
     args.num_layers = config.num_hidden_layers if args.num_layers is None else args.num_layers
@@ -88,9 +87,9 @@ def train(args):
     'classifier.weight',
     'classifier.bias'}
 
-    #bert_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
+    #language_model.load_state_dict(torch.load('../bert_encoder_part.pkl'))
     # freeze parameters
-    for name,param in bert_model.named_parameters():
+    for name,param in language_model.named_parameters():
         if args.fineune_options == 0:
             param.requires_grad = False
         elif args.fineune_options == -2:
@@ -117,7 +116,7 @@ def train(args):
     if os.path.exists(news_cache_path):
         news, news_index, category_dict, domain_dict, subcategory_dict = pickle.load(open(news_cache_path, "rb"))
     else:
-        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_bert(
+        news, news_index, category_dict, domain_dict, subcategory_dict = read_news_lm(
             os.path.join(os.path.expanduser(args.root_data_dir),
                         f'{args.dataset}/{args.train_dir}/news.tsv'), 
             args,
@@ -128,7 +127,7 @@ def train(args):
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
     news_body, news_body_type, news_body_attmask, \
-    news_category, news_domain, news_subcategory = get_doc_input_bert(
+    news_category, news_domain, news_subcategory = get_doc_input_lm(
         news, news_index, category_dict, domain_dict, subcategory_dict, args)
 
     news_combined = np.concatenate([
@@ -139,7 +138,7 @@ def train(args):
             news_category, news_domain, news_subcategory]
         if x is not None], axis=1)
 
-    model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
+    model = Model(args, language_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
     word_dict = None
 
     if args.enable_gpu:
@@ -220,6 +219,8 @@ def train(args):
 
     with torch.autograd.detect_anomaly() if args.enable_detect_anomaly else utils.dummy_context_mgr():
         logging.info('Training...')
+        # track the training progress
+        writer = SummaryWriter()        
         for ep in range(args.epochs):
             loss = 0.0
             accuracy = 0.0
@@ -235,7 +236,8 @@ def train(args):
                     targets = targets.cuda(non_blocking=True)
 
                 bz_loss, y_hat = model(input_ids, user_ids, log_ids, log_mask, targets)
-                # summary(model, [input_ids.shape, log_ids.shape, log_mask.shape, targets.shape], batch_size=16, device='cuda' if args.enable_gp else 'cpu')
+                if cnt == 0:
+                    writer.add_graph(model, input_to_model=[input_ids, user_ids, log_ids, log_mask, targets], verbose=False)
                 optimizer.zero_grad()
                 bz_loss.backward()
 
@@ -248,6 +250,9 @@ def train(args):
 
                 loss += (bz_loss.data.float() - loss) / (cnt + 1)
                 accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
+                writer.add_scalar("Loss", loss, cnt)
+                writer.add_scalar("Accuracy", accuracy, cnt)
+                writer.add_scalars('Summary', {'Loss': loss, 'Accuracy': accuracy}, cnt)
                 if cnt % args.log_steps == 0:
                     LOSS.append(loss.detach().cpu().numpy())
                     ACC.append(accuracy.detach().cpu().numpy())
@@ -260,6 +265,7 @@ def train(args):
                 # save model for every num of save steps
                 logging.info('[{}] Ed: {} {} {}'.format(hvd_rank, cnt, args.save_steps, cnt % args.save_steps))
                 def save_model(LOSS, ACC, VERBOSE, eva=True):
+                    # save model
                     ckpt_path = os.path.join(os.path.expanduser(args.model_dir), f'epoch-{ep+1}-{cnt}-{loss:.5f}-{accuracy:.5f}.pt')
                     torch.save(
                         {
@@ -271,6 +277,7 @@ def train(args):
                             'subcategory_dict': subcategory_dict
                         }, ckpt_path)
                     logging.info(f"Model saved to {ckpt_path}")
+
                     # save history
                     if len(LOSS) != 0:
                         write_history(LOSS, ACC, VERBOSE, outfile)
@@ -278,17 +285,23 @@ def train(args):
                         logging.info(f"Training history saved to {outfile}")
 
                     # evaluate the model for each save
+                    metrics = None
                     if eva:
                         prev_test_dir = args.test_dir
                         args.test_dir = 'dev'
                         logging.info(f"Evaluation on data in dir {args.test_dir} started")
                         model.eval()
                         torch.set_grad_enabled(False)
-                        metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer)
+                        metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer, ckpt_path)
+                        utils.add_metrics(writer, metrics, cnt)
+                        list_element_dict = {'category': category_dict, 'domain': domain_dict, 'subcategory': subcategory_dict, 'user_id': user_dict}
+                        utils.add_embedding(model, writer, list_element_dict, args, cnt)
+                        utils.add_weight_histograms(model, writer, args, cnt)
                         model.train()
                         torch.set_grad_enabled(True)
                         args.test_dir = prev_test_dir
                         logging.info(f"Evaluation on data in dir {args.test_dir} finished with final metrics: {metrics}")
+
                 if hvd_rank == 0 and cnt % args.save_steps == 0 and cnt != 0:
                     save_model(LOSS, ACC, VERBOSE)
 
@@ -301,7 +314,7 @@ def train(args):
     dataloader.join()
 
 
-def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, domain_dict=None, subcategory_dict=None, tokenizer=None):
+def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, domain_dict=None, subcategory_dict=None, tokenizer=None, ckpt_path=None):
     start_time = time.time()
 
     if args.enable_hvd:
@@ -310,39 +323,35 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     hvd_size, hvd_rank, hvd_local_rank = utils.init_hvd_cuda(
         args.enable_hvd, args.enable_gpu)
 
-    if args.load_ckpt_test is not None:
-        ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_test)
-    else:
-        ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
-
-    assert ckpt_path is not None, 'No ckpt found'
-    # this is not an error, set both to cpu to avoid conflict in gpu process for now    
-    if args.enable_gpu:
-        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
-    else:
-        checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
-
-    if 'subcategory_dict' in checkpoint:
-        subcategory_dict = checkpoint['subcategory_dict'] if subcategory_dict is None else subcategory_dict
-    else:
-        subcategory_dict = {}
-
-    category_dict = checkpoint['category_dict'] if category_dict is None else category_dict
-    word_dict = checkpoint['word_dict'] if word_dict is None else word_dict
-    domain_dict = checkpoint['domain_dict'] if domain_dict is None else domain_dict
-    user_dict = checkpoint['user_dict'] if user_dict is None and 'user_dict' in checkpoint else user_dict if user_dict is not None else {}
-    pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
-    tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path)) if tokenizer is None else tokenizer
-
     if model is None:
+        if args.load_ckpt_test is not None:
+            ckpt_path = utils.get_checkpoint(os.path.expanduser(args.model_dir), args.load_ckpt_test)
+        else:
+            ckpt_path = utils.latest_checkpoint(os.path.expanduser(args.model_dir))
+
+        assert ckpt_path is not None, 'No ckpt found'
+        # this is not an error, set both to cpu to avoid conflict in gpu process for now    
+        if args.enable_gpu:
+            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+        else:
+            checkpoint = torch.load(ckpt_path, map_location=torch.device('cpu'))
+
+        subcategory_dict = checkpoint['subcategory_dict'] if subcategory_dict is None else subcategory_dict
+        category_dict = checkpoint['category_dict'] if category_dict is None else category_dict
+        word_dict = checkpoint['word_dict'] if word_dict is None else word_dict
+        domain_dict = checkpoint['domain_dict'] if domain_dict is None else domain_dict
+        user_dict = checkpoint['user_dict'] if user_dict is None and 'user_dict' in checkpoint else user_dict if user_dict is not None else {}
+        pretrain_lm_path = os.path.expanduser(args.pretrain_lm_path)  # or by name "bert-base-uncased"
+        tokenizer = AutoTokenizer.from_pretrained(os.path.expanduser(pretrain_lm_path)) if tokenizer is None else tokenizer
+
         config = AutoConfig.from_pretrained(os.path.expanduser(pretrain_lm_path), output_hidden_states=True)
-        bert_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
+        language_model = AutoModel.from_pretrained(os.path.expanduser(pretrain_lm_path), config=config)
 
         # auto adjust hyper parameter by pre-trained model config
         args.num_layers = config.num_hidden_layers if args.num_layers is None else args.num_layers
         args.word_embedding_dim = config.hidden_size if args.word_embedding_dim is None else args.word_embedding_dim
 
-        model = ModelBert(args, bert_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
+        model = Model(args, language_model, len(user_dict), len(category_dict), len(domain_dict), len(subcategory_dict))
 
         if args.enable_gpu:
             model.cuda()
@@ -361,7 +370,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     if os.path.exists(news_cache_path):
         news, news_index, _, _, _ = pickle.load(open(news_cache_path, "rb"))
     else:
-        news, news_index, _, _, _ = read_news_bert(
+        news, news_index, _, _, _ = read_news_lm(
             os.path.join(os.path.expanduser(args.root_data_dir),
                         f'{args.dataset}/{args.test_dir}/news.tsv'), 
             args,
@@ -372,7 +381,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
     news_title, news_title_type, news_title_attmask, \
     news_abstract, news_abstract_type, news_abstract_attmask, \
     news_body, news_body_type, news_body_attmask, \
-    news_category, news_domain, news_subcategory = get_doc_input_bert(
+    news_category, news_domain, news_subcategory = get_doc_input_lm(
         news, news_index, category_dict, domain_dict, subcategory_dict, args)
 
     news_combined = np.concatenate([
@@ -452,7 +461,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
             logging.info(f"Saved metrics to {outfile_metrics}")
         if save:
             write_tsv(metrics)
-        return metrics
+        return mean_metrics
 
     def get_mean(arr):
         return [np.array(i).mean() for i in arr]
@@ -533,6 +542,7 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         SCORE = []
 
     # print and save metrics
+    final_metrics = [0.0, 0.0, 0.0, 0.0]
     if len(AUC) > 0:
         logging.info("Print final metrics")
         final_metrics = print_metrics(hvd_rank, count * args.batch_size, get_mean([AUC, MRR, nDCG5,  nDCG10]))

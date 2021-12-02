@@ -38,7 +38,7 @@ def read_user(dirname, filename_pat, args):
     return user_dict
 
 
-def read_news_bert(news_path, args, tokenizer, mode='train'):
+def read_news_lm(news_path, args, tokenizer, mode='train'):
     news = {}
     categories = []
     subcategories = []
@@ -280,7 +280,7 @@ def get_doc_input(news, news_index, category_dict, word_dict, domain_dict,
 
     return news_title, news_abstract, news_body, news_category, news_domain, news_subcategory
 
-def get_doc_input_bert(news, news_index, category_dict, domain_dict, subcategory_dict, args):
+def get_doc_input_lm(news, news_index, category_dict, domain_dict, subcategory_dict, args):
     news_num = len(news) + 1
     if 'title' in args.news_attributes:
         news_title = np.zeros((news_num, args.num_words_title), dtype='int32')
