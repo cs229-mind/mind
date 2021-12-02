@@ -73,3 +73,8 @@ By Default: the pretrained model(bert-base-uncased) can be downloaded from https
   - Two tower model(tuned)
 
 ![image](https://user-images.githubusercontent.com/28990806/140866972-2d9e8890-a883-4894-a416-bbe598de9688.png)
+
+  - Personalized Mixed Network
+![image](https://user-images.githubusercontent.com/28990806/144518339-9b91b33e-3564-4161-8d05-0dcaccfb30ce.png)
+
+
