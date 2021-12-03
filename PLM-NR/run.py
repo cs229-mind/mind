@@ -220,7 +220,8 @@ def train(args):
     with torch.autograd.detect_anomaly() if args.enable_detect_anomaly else utils.dummy_context_mgr():
         logging.info('Training...')
         # track the training progress
-        writer = SummaryWriter()        
+        if hvd_rank == 0:
+            writer = SummaryWriter()
         for ep in range(args.epochs):
             loss = 0.0
             accuracy = 0.0
@@ -237,7 +238,7 @@ def train(args):
                     targets = targets.cuda(non_blocking=True)
 
                 bz_loss, y_hat = model(input_ids, user_ids, log_ids, log_mask, targets)
-                if global_step == 0:
+                if global_step == 0 and hvd_rank == 0:
                     writer.add_graph(model, input_to_model=[input_ids, user_ids, log_ids, log_mask, targets], verbose=False)
                 optimizer.zero_grad()
                 bz_loss.backward()
@@ -251,9 +252,10 @@ def train(args):
 
                 loss += (bz_loss.data.float() - loss) / (cnt + 1)
                 accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
-                writer.add_scalar("Loss", loss, global_step)
-                writer.add_scalar("Accuracy", accuracy, global_step)
-                writer.add_scalars('Summary', {'Loss': loss, 'Accuracy': accuracy}, global_step)
+                if hvd_rank == 0:
+                    writer.add_scalar("Loss", loss.data, global_step)
+                    writer.add_scalar("Accuracy", accuracy, global_step)
+                    writer.add_scalars('Summary', {'Loss': loss.data, 'Accuracy': accuracy}, global_step)
                 if cnt % args.log_steps == 0:
                     LOSS.append(loss.detach().cpu().numpy())
                     ACC.append(accuracy.detach().cpu().numpy())
@@ -488,8 +490,8 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
             # logging.info(f"start new batch {cnt}")
             count = cnt
 
-            if count == 2:
-                break
+            # if count == 2:
+            #     break
 
             if args.enable_gpu:
                 user_ids = user_ids.cuda(non_blocking=True)
