@@ -227,6 +227,7 @@ def train(args):
             for cnt, (user_ids, log_ids, log_mask, input_ids, targets) in enumerate(dataloader):
                 if cnt > args.max_steps_per_epoch:
                     break
+                global_step = args.max_steps_per_epoch * ep + cnt
 
                 if args.enable_gpu:
                     log_ids = log_ids.cuda(non_blocking=True)
@@ -236,7 +237,7 @@ def train(args):
                     targets = targets.cuda(non_blocking=True)
 
                 bz_loss, y_hat = model(input_ids, user_ids, log_ids, log_mask, targets)
-                if cnt == 0:
+                if global_step == 0:
                     writer.add_graph(model, input_to_model=[input_ids, user_ids, log_ids, log_mask, targets], verbose=False)
                 optimizer.zero_grad()
                 bz_loss.backward()
@@ -250,9 +251,9 @@ def train(args):
 
                 loss += (bz_loss.data.float() - loss) / (cnt + 1)
                 accuracy += (utils.acc(targets, y_hat) - accuracy) / (cnt + 1)
-                writer.add_scalar("Loss", loss, cnt)
-                writer.add_scalar("Accuracy", accuracy, cnt)
-                writer.add_scalars('Summary', {'Loss': loss, 'Accuracy': accuracy}, cnt)
+                writer.add_scalar("Loss", loss, global_step)
+                writer.add_scalar("Accuracy", accuracy, global_step)
+                writer.add_scalars('Summary', {'Loss': loss, 'Accuracy': accuracy}, global_step)
                 if cnt % args.log_steps == 0:
                     LOSS.append(loss.detach().cpu().numpy())
                     ACC.append(accuracy.detach().cpu().numpy())
@@ -293,10 +294,10 @@ def train(args):
                         model.eval()
                         torch.set_grad_enabled(False)
                         metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer, ckpt_path)
-                        utils.add_metrics(writer, metrics, cnt)
+                        utils.add_metrics(writer, metrics, global_step)
                         list_element_dict = {'category': category_dict, 'domain': domain_dict, 'subcategory': subcategory_dict, 'user_id': user_dict}
-                        utils.add_embedding(model, writer, list_element_dict, args, cnt)
-                        utils.add_weight_histograms(model, writer, args, cnt)
+                        utils.add_embedding(model, writer, list_element_dict, args, global_step)
+                        utils.add_weight_histograms(model, writer, args, global_step)
                         model.train()
                         torch.set_grad_enabled(True)
                         args.test_dir = prev_test_dir
@@ -486,6 +487,9 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         for cnt, (impression_ids, user_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
             # logging.info(f"start new batch {cnt}")
             count = cnt
+
+            if count == 2:
+                break
 
             if args.enable_gpu:
                 user_ids = user_ids.cuda(non_blocking=True)
