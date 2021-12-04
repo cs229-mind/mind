@@ -160,12 +160,16 @@ class TextEncoder(torch.nn.Module):
             #TODO make intermediate_size configurable
             self.fastformer_encoder = FastformerEncoder(args, hidden_size=word_embedding_dim, intermediate_size=word_embedding_dim)
             self.reduce_dim_linear = nn.Linear(word_embedding_dim, num_attention_heads*20)
-        else:
+        elif self.args.enable_multihead_text:
             self.multihead_attention = MultiHeadAttention(word_embedding_dim,
                                                         num_attention_heads, 20,
                                                         20, enable_gpu)
             self.additive_attention = AdditiveAttention(num_attention_heads*20,
                                                         query_vector_dim)
+        else:
+            self.additive_attention = AdditiveAttention(word_embedding_dim,
+                                                        query_vector_dim)
+            self.reduce_dim_linear = nn.Linear(word_embedding_dim, num_attention_heads*20)                                                        
 
     def forward(self, text, mask=None):
         """
@@ -184,12 +188,12 @@ class TextEncoder(torch.nn.Module):
             word_emb = self.language_model(text_ids, text_attmask)[2][self.args.num_layers-1]
         else:
             word_emb = self.language_model(text_ids, text_type, text_attmask)[2][self.args.num_layers-1]
+        text_vector = F.dropout(word_emb,
+                                p=self.dropout_rate,
+                                training=self.training)
         if mask is None:
-            mask = text_attmask
+            mask =  text_attmask
         if self.args.enable_multihead_fastformer_text:
-            text_vector = F.dropout(word_emb,
-                                    p=self.dropout_rate,
-                                    training=self.training)
             # batch_size, num_words_text, word_embedding_dim
             multihead_text_vector = self.multihead_attention(
                 text_vector, text_vector, text_vector, mask)
@@ -197,10 +201,10 @@ class TextEncoder(torch.nn.Module):
                                             p=self.dropout_rate,
                                             training=self.training)
             text_vector = self.fastformer_encoder(multihead_text_vector, mask)
-        elif self.args.enable_fastformer_text:
-            text_vector = self.fastformer_encoder(word_emb, mask)
+        elif self.args.enable_fastformer_text:        
+            text_vector = self.fastformer_encoder(text_vector, mask)
             text_vector = self.reduce_dim_linear(text_vector)
-        else:
+        elif self.args.enable_multihead_text:
             text_vector = F.dropout(word_emb,
                                     p=self.dropout_rate,
                                     training=self.training)
@@ -212,6 +216,10 @@ class TextEncoder(torch.nn.Module):
                                             training=self.training)
             # batch_size, word_embedding_dim
             text_vector = self.additive_attention(multihead_text_vector, mask)
+        else:
+            # batch_size, word_embedding_dim
+            text_vector = self.additive_attention(text_vector, mask)
+            text_vector = self.reduce_dim_linear(text_vector)            
         return text_vector
 
 
@@ -335,6 +343,14 @@ class UserEncoder(torch.nn.Module):
         self.user_dict_size = user_dict_size
         if self.args.enable_fastformer_user:
             self.news_fastformer_encoder = FastformerEncoder(args, hidden_size=args.news_dim, intermediate_size=args.user_query_vector_dim)
+        elif self.args.enable_multihead_text:
+            self.multihead_attention = MultiHeadAttention(args.news_dim,
+                                                          args.num_attention_heads, 20,
+                                                          20, args.enable_gpu)
+            self.news_additive_attention = AdditiveAttention(
+                args.num_attention_heads * 20, args.user_query_vector_dim)
+            self.reduce_dim_linear = nn.Linear(args.num_attention_heads * 20,
+                                            args.news_dim)
         else:
             self.news_additive_attention = AdditiveAttention(
                 args.news_dim, args.user_query_vector_dim)
@@ -378,6 +394,12 @@ class UserEncoder(torch.nn.Module):
         # batch_size, news_dim
         if self.args.enable_fastformer_user:
             vec = self.news_fastformer_encoder(vec, mask if use_mask else None)
+        elif self.args.enable_multihead_text:
+            multihead_text_vector = self.multihead_attention(
+                vec, vec, vec, mask if use_mask else None)
+            vec = self.news_additive_attention(multihead_text_vector,
+                                    mask if use_mask else None)
+            vec = self.reduce_dim_linear(vec)
         else:
             vec = self.news_additive_attention(vec,
                                     mask if use_mask else None)

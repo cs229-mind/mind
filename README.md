@@ -43,6 +43,8 @@ or horovodrun -n 6 python3 run_parallel.py --mode test --test_dir 'test' --batch
 
 Debug: while running, command kill -SIGUSR1 your_pid would tell which line of code the thread is running
 
+Monitor: while running, command tensorboard --logdir 'runs' would be able to monitor metrics: loss, accuracy, auc, mrr, ndcg
+
 # Submit
 upload the prediction_<20211031233724>.tsv in model folder as described in the folder structure to leaderboard(https://competitions.codalab.org/competitions/24122#participate)
 

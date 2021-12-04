@@ -297,8 +297,6 @@ def train(args):
                         torch.set_grad_enabled(False)
                         metrics = test(args, model, user_dict, category_dict, word_dict, domain_dict, subcategory_dict, tokenizer, ckpt_path)
                         utils.add_metrics(writer, metrics, global_step)
-                        list_element_dict = {'category': category_dict, 'domain': domain_dict, 'subcategory': subcategory_dict, 'user_id': user_dict}
-                        utils.add_embedding(model, writer, list_element_dict, args, global_step)
                         utils.add_weight_histograms(model, writer, args, global_step)
                         model.train()
                         torch.set_grad_enabled(True)
@@ -313,6 +311,10 @@ def train(args):
             # # save model last of epoch
             # if hvd_rank == 0:
             #     save_model(LOSS, ACC, VERBOSE)
+
+        if hvd_rank == 0:
+            list_element_dict = {'category': category_dict, 'domain': domain_dict, 'subcategory': subcategory_dict, 'user_id': user_dict}
+            utils.add_embedding(model, writer, list_element_dict, args, global_step)
 
     dataloader.join()
 
@@ -489,9 +491,6 @@ def test(args, model=None, user_dict=None, category_dict=None, word_dict=None, d
         for cnt, (impression_ids, user_ids, log_vecs, log_mask, news_vecs, news_bias, labels) in enumerate(dataloader):
             # logging.info(f"start new batch {cnt}")
             count = cnt
-
-            # if count == 2:
-            #     break
 
             if args.enable_gpu:
                 user_ids = user_ids.cuda(non_blocking=True)
