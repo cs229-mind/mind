@@ -9,13 +9,13 @@ from fastformer.fastformer import FastformerEncoder
 
 
 class Feedforward(nn.Module):
-        def __init__(self, input_size, hidden_size):
+        def __init__(self, input_size, hidden_size, output_size=1):
             super(Feedforward, self).__init__()
             self.input_size = input_size
             self.hidden_size  = hidden_size
             self.fc1 = torch.nn.Linear(self.input_size, self.hidden_size)
             self.relu = torch.nn.ReLU()
-            self.fc2 = torch.nn.Linear(self.hidden_size, 1)
+            self.fc2 = torch.nn.Linear(self.hidden_size, output_size)
         def forward(self, x):
             hidden = self.fc1(x)
             relu = self.relu(hidden)
@@ -298,6 +298,10 @@ class NewsEncoder(torch.nn.Module):
                 torch.load(os.path.join(os.path.expanduser(args.pretrain_news_encoder_path), 
                 'reduce_dim_linear.pkl'))
             )
+        if 'domain' in self.element_encoders and args.pretrain_news_id_encoder_path is not None:
+            embedding_path = os.path.expanduser(args.pretrain_news_id_encoder_path)
+            weight = torch.load(embedding_path, map_location=torch.device('cpu'))['news_encoder.element_encoders.domain.embedding.weight']
+            self.element_encoders['domain'].embedding = nn.Embedding.from_pretrained(weight, freeze=True)
 
     def forward(self, news):
         """
@@ -380,6 +384,10 @@ class UserEncoder(torch.nn.Module):
         if len(args.user_attributes) > 1:
             self.final_attention = AdditiveAttention(
                 args.news_dim, args.user_query_vector_dim)
+        if 'user_id' in self.element_encoders and args.pretrain_user_id_encoder_path is not None:
+            embedding_path = os.path.expanduser(args.pretrain_user_id_encoder_path)                
+            weight = torch.load(embedding_path, map_location=torch.device('cpu'))['user_encoder.element_encoders.user_id.embedding.weight']
+            self.element_encoders['user_id'].embedding = nn.Embedding.from_pretrained(weight, freeze=True)
 
     def _process_news(self, vec, mask, pad_doc, use_mask=False, use_padded_embedding=False):
         assert not (use_padded_embedding and use_mask), 'Conflicting config'

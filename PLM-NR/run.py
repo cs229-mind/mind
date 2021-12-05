@@ -289,7 +289,7 @@ def train(args):
 
                     # evaluate the model for each save
                     metrics = None
-                    if eva:
+                    if eva and args.enable_evaluation:
                         prev_test_dir = args.test_dir
                         args.test_dir = 'dev'
                         logging.info(f"Evaluation on data in dir {args.test_dir} started")

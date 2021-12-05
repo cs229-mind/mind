@@ -203,14 +203,20 @@ def add_embedding(model, writer, list_element_dict, args, global_step):
         logging.info('skip adding weight to tfboard, enable_weight_tfboard is set to false')
         return    
     element_names = [element_name for element_name in list_element_dict.keys()]
-    logging.debug('adding embedding to tensorboard: {}'.format(element_names))
+    logging.info('adding embedding to tensorboard: {}'.format(element_names))
+    embeddings = {}
     for element_name, element_dict in list_element_dict.items():
         index2element = dict([(value, key) for (key, value) in element_dict.items()])
         index2element[0] = 'OOV'
         for name, param in model.named_parameters():
             if element_name in name.split('.'):
-                writer.add_embedding(param, metadata=index2element, global_step=global_step, tag=element_name)
-    logging.debug('added embedding to tensorboard: {}'.format(element_names))
+                embeddings[name] = param
+                writer.add_embedding(param, metadata=[label for idx, label in sorted(index2element.items())], global_step=global_step, tag=element_name)
+    logging.info('added embedding to tensorboard: {}'.format(element_names))
+    embedding_path = os.path.join(os.path.expanduser(args.model_dir), 'embeddings.pt')    
+    logging.info('saving embedding to: {}'.format(embedding_path))    
+    torch.save(embeddings, embedding_path)
+    logging.info('saved embedding to: {}'.format(embedding_path))  
 
 
 def add_weight_histograms(model, writer, args, global_step):
