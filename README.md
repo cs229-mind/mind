@@ -80,3 +80,6 @@ By Default: the pretrained model(bert-base-uncased) can be downloaded from https
 ![image](https://user-images.githubusercontent.com/28990806/144518339-9b91b33e-3564-4161-8d05-0dcaccfb30ce.png)
 
 
+History of the performance of different components and feature combination:
+![image](https://user-images.githubusercontent.com/28990806/144733526-26b2bbd1-c0eb-43db-acbc-92969fd2a731.png)
+
