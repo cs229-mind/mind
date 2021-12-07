@@ -61,10 +61,10 @@ def parse_args():
 
     # model architecture options
     parser.add_argument("--enable_fastformer_user", type=utils.str2bool, default=True)
-    parser.add_argument("--enable_fastformer_text", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_fastformer_text", type=utils.str2bool, default=True)
     parser.add_argument("--enable_multihead_user", type=utils.str2bool, default=False)
-    parser.add_argument("--enable_multihead_text", type=utils.str2bool, default=True)
-    parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_multihead_text", type=utils.str2bool, default=False)
+    parser.add_argument("--enable_multihead_fastformer_text", type=utils.str2bool, default=True)
     parser.add_argument("--enable_additive_user_attributes", type=utils.str2bool, default=True)
     parser.add_argument("--enable_additive_news_attributes", type=utils.str2bool, default=True)
     parser.add_argument("--interaction", type=str, default='concatenation', choices=['cosine', 'hadamard', 'concatenation'])
@@ -118,7 +118,7 @@ def parse_args():
     parser.add_argument(
         "--news_dim",
         type=int,
-        default=128,
+        default=64,
     )
     parser.add_argument(
         "--news_query_vector_dim",
@@ -128,7 +128,7 @@ def parse_args():
     parser.add_argument(
         "--user_query_vector_dim",
         type=int,
-        default=200,
+        default=32,
     )
     parser.add_argument(
         "--num_attention_heads",
@@ -169,6 +169,7 @@ def parse_args():
 
     # inference
     parser.add_argument("--ignore_unseen_user", type=utils.str2bool, default=False)
+    parser.add_argument("--only_unseen_user", type=utils.str2bool, default=False)    
     parser.add_argument("--save_embedding", type=utils.str2bool, default=False)
 
     args = parser.parse_args()

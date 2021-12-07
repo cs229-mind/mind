@@ -16,7 +16,7 @@ import time
 from dataloader_parallel import DataLoaderTrain, DataLoaderTest
 from torch.utils.data import Dataset, DataLoader
 from preprocess import read_news, read_news_lm, get_doc_input, get_doc_input_lm
-from model import Model
+from model_bert import Model
 from parameters import parse_args
 
 from transformers import AutoTokenizer, AutoModel, AutoConfig
@@ -187,6 +187,8 @@ def test(args):
         for (impression_id, user_id, log_vec, mask, news_vec, bias, label) in batch:
             if args.ignore_unseen_user and user_id[0] == 0:
                 continue
+            if args.only_unseen_user and user_id[0] != 0:
+                continue
             impression_ids.append(impression_id)
             user_ids.append(user_id)
             log_vecs.append(log_vec)
@@ -208,7 +210,7 @@ def test(args):
             log_vecs = log_vecs.cuda(non_blocking=True)
             log_mask = log_mask.cuda(non_blocking=True)
 
-        if args.ignore_unseen_user and len(user_ids) == 0:
+        if (args.ignore_unseen_user or args.only_unseen_user) and len(user_ids) == 0:
             return []
 
         user_vecs = model.user_encoder(user_ids, log_vecs, log_mask)
