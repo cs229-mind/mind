@@ -229,7 +229,7 @@ def test(args):
 
             user_vec = user_vec.unsqueeze(0)
             news_vec = news_vec.unsqueeze(0)
-            score = model.scoring(news_vec, user_vec).to(torch.device("cpu")).detach().numpy().squeeze()
+            score = model.scoring(news_vec, user_vec).to(torch.device("cpu")).detach().numpy().squeeze(0)
 
             # label is -1 is for test set and prediction only
             if(np.all(label == -1)):
